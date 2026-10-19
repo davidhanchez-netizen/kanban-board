@@ -1,5 +1,5 @@
 import { asc, eq } from "drizzle-orm";
-import { apiError } from "../_utils";
+import { apiError, requireRole, requireUser } from "../_utils";
 import { getDb } from "@/app/db";
 import { columns, tasks } from "@/app/db/schema";
 
@@ -7,6 +7,9 @@ const workspaces = ["Producto", "Marketing", "Operaciones"];
 
 export async function GET() {
   try {
+    const { response } = await requireUser();
+    if (response) return response;
+
     const db = getDb();
     const result = await db.select().from(columns).orderBy(asc(columns.position), asc(columns.id));
     return Response.json({ columns: result });
@@ -17,6 +20,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const { user, response } = await requireUser();
+    if (response) return response;
+    const forbidden = requireRole("ADMIN", user.role);
+    if (forbidden) return forbidden;
+
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") {
       return Response.json({ error: "A column name is required." }, { status: 400 });
@@ -47,6 +55,11 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    const { user, response } = await requireUser();
+    if (response) return response;
+    const forbidden = requireRole("ADMIN", user.role);
+    if (forbidden) return forbidden;
+
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") {
       return Response.json({ error: "A column id and name are required." }, { status: 400 });
@@ -70,6 +83,11 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const { user, response } = await requireUser();
+    if (response) return response;
+    const forbidden = requireRole("ADMIN", user.role);
+    if (forbidden) return forbidden;
+
     const { searchParams } = new URL(request.url);
     const id = Number(searchParams.get("id"));
     if (!Number.isSafeInteger(id) || id < 1) {

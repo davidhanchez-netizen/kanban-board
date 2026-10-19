@@ -1,7 +1,7 @@
-import { asc, eq } from "drizzle-orm";
-import { apiError, isPriority } from "../_utils";
+import { and, asc, eq } from "drizzle-orm";
+import { apiError, isPriority, requireRole, requireUser } from "../_utils";
 import { getDb } from "@/app/db";
-import { columns, tasks } from "@/app/db/schema";
+import { columns, tasks, users } from "@/app/db/schema";
 
 function validDueDate(value: unknown): value is string | null {
   if (value === null) return true;
@@ -12,11 +12,24 @@ function validDueDate(value: unknown): value is string | null {
 
 export async function GET() {
   try {
-    const result = await getDb()
-      .select()
+    const { user, response } = await requireUser();
+    if (response) return response;
+
+    const db = getDb();
+    const query = db
+      .select({ task: tasks, assigneeName: users.name, assigneeEmail: users.email })
       .from(tasks)
+      .leftJoin(users, eq(tasks.assigneeId, users.id))
       .orderBy(asc(tasks.createdAt), asc(tasks.id));
-    return Response.json({ tasks: result });
+    const result = user.role === "ADMIN"
+      ? await query
+      : await query.where(eq(tasks.assigneeId, user.id));
+    return Response.json({
+      tasks: result.map(({ task, assigneeName, assigneeEmail }) => ({
+        ...task,
+        assigneeName: assigneeName ?? assigneeEmail ?? task.assignee,
+      })),
+    });
   } catch (error) {
     return apiError(error);
   }
@@ -24,6 +37,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const { user, response } = await requireUser();
+    if (response) return response;
+    const forbidden = requireRole("ADMIN", user.role);
+    if (forbidden) return forbidden;
+
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") {
       return Response.json({ error: "Task details are required." }, { status: 400 });
@@ -44,11 +62,25 @@ export async function POST(request: Request) {
     if (task.assignee !== undefined && typeof task.assignee !== "string") {
       return Response.json({ error: "Assignee must be text." }, { status: 400 });
     }
+    if (
+      task.assigneeId !== undefined &&
+      task.assigneeId !== null &&
+      (typeof task.assigneeId !== "string" || !task.assigneeId.trim())
+    ) {
+      return Response.json({ error: "Choose a valid assignee." }, { status: 400 });
+    }
     if (task.dueDate !== undefined && !validDueDate(task.dueDate)) {
       return Response.json({ error: "Due date must use YYYY-MM-DD format." }, { status: 400 });
     }
 
     const db = getDb();
+    const assigneeId = typeof task.assigneeId === "string" ? task.assigneeId.trim() : null;
+    const [assignee] = assigneeId
+      ? await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(eq(users.id, assigneeId)).limit(1)
+      : [];
+    if (assigneeId && !assignee) {
+      return Response.json({ error: "Assignee not found." }, { status: 404 });
+    }
     const [destination] = await db
       .select({ id: columns.id })
       .from(columns)
@@ -63,7 +95,10 @@ export async function POST(request: Request) {
         description: (task.description as string | undefined)?.trim() ?? "",
         priority: isPriority(task.priority) ? task.priority : "medium",
         columnId: task.columnId as number,
-        assignee: (task.assignee as string | undefined)?.trim() || "You",
+        assignee: assignee
+          ? assignee.name ?? assignee.email ?? "Member"
+          : (task.assignee as string | undefined)?.trim() || "You",
+        assigneeId,
         dueDate: (task.dueDate as string | null | undefined) ?? null,
       })
       .returning();
@@ -75,11 +110,18 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    const { user, response } = await requireUser();
+    if (response) return response;
+
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") {
       return Response.json({ error: "Task id and update fields are required." }, { status: 400 });
     }
     const update = body as Record<string, unknown>;
+    const isAdmin = user.role === "ADMIN";
+    if (!isAdmin && Object.keys(update).some((key) => key !== "id" && key !== "columnId" && key !== "completed")) {
+      return Response.json({ error: "Members can only move or update the status of their assigned tasks." }, { status: 403 });
+    }
     if (!Number.isSafeInteger(update.id) || (update.id as number) < 1) {
       return Response.json({ error: "A valid task id is required." }, { status: 400 });
     }
@@ -116,6 +158,20 @@ export async function PATCH(request: Request) {
       if (typeof update.assignee !== "string") return Response.json({ error: "Assignee must be text." }, { status: 400 });
       values.assignee = update.assignee.trim() || "You";
     }
+    if (update.assigneeId !== undefined) {
+      if (update.assigneeId !== null && (typeof update.assigneeId !== "string" || !update.assigneeId.trim())) {
+        return Response.json({ error: "Choose a valid assignee." }, { status: 400 });
+      }
+      const assigneeId = typeof update.assigneeId === "string" ? update.assigneeId.trim() : null;
+      const [assignee] = assigneeId
+        ? await getDb().select({ id: users.id, name: users.name, email: users.email }).from(users).where(eq(users.id, assigneeId)).limit(1)
+        : [];
+      if (assigneeId && !assignee) {
+        return Response.json({ error: "Assignee not found." }, { status: 404 });
+      }
+      values.assigneeId = assigneeId;
+      values.assignee = assignee ? assignee.name ?? assignee.email ?? "Member" : "You";
+    }
     if (update.completed !== undefined) {
       if (typeof update.completed !== "boolean") {
         return Response.json({ error: "Completed must be a boolean." }, { status: 400 });
@@ -130,10 +186,12 @@ export async function PATCH(request: Request) {
     }
     if (!Object.keys(values).length) return Response.json({ error: "No task fields to update." }, { status: 400 });
 
+    const conditions = [eq(tasks.id, update.id as number)];
+    if (!isAdmin) conditions.push(eq(tasks.assigneeId, user.id));
     const [updated] = await getDb()
       .update(tasks)
       .set(values)
-      .where(eq(tasks.id, update.id as number))
+      .where(and(...conditions))
       .returning();
     if (!updated) return Response.json({ error: "Task not found." }, { status: 404 });
     return Response.json({ task: updated });
@@ -144,6 +202,11 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const { user, response } = await requireUser();
+    if (response) return response;
+    const forbidden = requireRole("ADMIN", user.role);
+    if (forbidden) return forbidden;
+
     const { searchParams } = new URL(request.url);
     const id = Number(searchParams.get("id"));
     if (!Number.isSafeInteger(id) || id < 1) {

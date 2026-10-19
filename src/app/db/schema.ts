@@ -1,21 +1,73 @@
 import {
   boolean,
   date,
+  bigint,
   integer,
   pgEnum,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
 
 export const priorityEnum = pgEnum("task_priority", ["high", "medium", "low"]);
+export const userRoleEnum = pgEnum("user_role", ["ADMIN", "MEMBER"]);
+
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  name: text("name"),
+  email: text("email").unique(),
+  emailVerified: timestamp("email_verified", { withTimezone: true }),
+  image: text("image"),
+  role: userRoleEnum("role").notNull().default("MEMBER"),
+});
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: integer("expires_at"),
+    token_type: text("token_type"),
+    scope: text("scope"),
+    id_token: text("id_token"),
+    session_state: text("session_state"),
+  },
+  (account) => [primaryKey({ columns: [account.provider, account.providerAccountId] })],
+);
+
+export const sessions = pgTable("sessions", {
+  sessionToken: text("session_token").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expires: timestamp("expires", { withTimezone: true }).notNull(),
+});
+
+export const verificationTokens = pgTable(
+  "verification_tokens",
+  {
+    identifier: text("identifier").notNull(),
+    token: text("token").notNull(),
+    expires: timestamp("expires", { withTimezone: true }).notNull(),
+  },
+  (verificationToken) => [
+    primaryKey({ columns: [verificationToken.identifier, verificationToken.token] }),
+  ],
+);
 
 export const columns = pgTable("board_columns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   workspace: text("workspace").notNull().default("Producto"),
-  position: integer("position").notNull().default(0),
+  position: bigint("position", { mode: "number" }).notNull().default(0),
 });
 
 export const tasks = pgTable("tasks", {
@@ -23,10 +75,11 @@ export const tasks = pgTable("tasks", {
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
   priority: priorityEnum("priority").notNull().default("medium"),
-  columnId: integer("column_id")
+  columnId: bigint("column_id", { mode: "number" })
     .notNull()
     .references(() => columns.id, { onDelete: "restrict" }),
   assignee: text("assignee").notNull().default("You"),
+  assigneeId: text("assignee_id").references(() => users.id, { onDelete: "set null" }),
   completed: boolean("completed").notNull().default(false),
   dueDate: date("due_date"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -34,3 +87,4 @@ export const tasks = pgTable("tasks", {
 
 export type Column = typeof columns.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
+export type UserRole = (typeof userRoleEnum.enumValues)[number];
