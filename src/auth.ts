@@ -1,5 +1,4 @@
 import NextAuth from "next-auth";
-import Apple from "next-auth/providers/apple";
 import Google from "next-auth/providers/google";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { eq } from "drizzle-orm";
@@ -24,10 +23,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.AUTH_GOOGLE_ID ?? "",
       clientSecret: process.env.AUTH_GOOGLE_SECRET ?? "",
-    }),
-    Apple({
-      clientId: process.env.AUTH_APPLE_ID ?? "",
-      clientSecret: process.env.AUTH_APPLE_SECRET ?? "",
     }),
   ],
   trustHost: true,

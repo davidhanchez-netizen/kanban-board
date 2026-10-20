@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { apiError, isPriority, requireRole, requireUser } from "../_utils";
 import { getDb } from "@/app/db";
 import { columns, tasks, users } from "@/app/db/schema";
@@ -12,7 +12,7 @@ function validDueDate(value: unknown): value is string | null {
 
 export async function GET() {
   try {
-    const { user, response } = await requireUser();
+    const { response } = await requireUser();
     if (response) return response;
 
     const db = getDb();
@@ -21,9 +21,7 @@ export async function GET() {
       .from(tasks)
       .leftJoin(users, eq(tasks.assigneeId, users.id))
       .orderBy(asc(tasks.createdAt), asc(tasks.id));
-    const result = user.role === "ADMIN"
-      ? await query
-      : await query.where(eq(tasks.assigneeId, user.id));
+    const result = await query;
     return Response.json({
       tasks: result.map(({ task, assigneeName, assigneeEmail }) => ({
         ...task,
@@ -39,8 +37,6 @@ export async function POST(request: Request) {
   try {
     const { user, response } = await requireUser();
     if (response) return response;
-    const forbidden = requireRole("ADMIN", user.role);
-    if (forbidden) return forbidden;
 
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") {
@@ -74,7 +70,9 @@ export async function POST(request: Request) {
     }
 
     const db = getDb();
-    const assigneeId = typeof task.assigneeId === "string" ? task.assigneeId.trim() : null;
+    const assigneeId = user.role === "ADMIN"
+      ? typeof task.assigneeId === "string" ? task.assigneeId.trim() : null
+      : user.id;
     const [assignee] = assigneeId
       ? await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(eq(users.id, assigneeId)).limit(1)
       : [];
@@ -119,8 +117,9 @@ export async function PATCH(request: Request) {
     }
     const update = body as Record<string, unknown>;
     const isAdmin = user.role === "ADMIN";
-    if (!isAdmin && Object.keys(update).some((key) => key !== "id" && key !== "columnId" && key !== "completed")) {
-      return Response.json({ error: "Members can only move or update the status of their assigned tasks." }, { status: 403 });
+    const memberFields = new Set(["id", "title", "description", "priority", "columnId", "completed", "dueDate"]);
+    if (!isAdmin && Object.keys(update).some((key) => !memberFields.has(key))) {
+      return Response.json({ error: "Members can edit task details but cannot reassign tasks." }, { status: 403 });
     }
     if (!Number.isSafeInteger(update.id) || (update.id as number) < 1) {
       return Response.json({ error: "A valid task id is required." }, { status: 400 });
@@ -186,12 +185,10 @@ export async function PATCH(request: Request) {
     }
     if (!Object.keys(values).length) return Response.json({ error: "No task fields to update." }, { status: 400 });
 
-    const conditions = [eq(tasks.id, update.id as number)];
-    if (!isAdmin) conditions.push(eq(tasks.assigneeId, user.id));
     const [updated] = await getDb()
       .update(tasks)
       .set(values)
-      .where(and(...conditions))
+      .where(eq(tasks.id, update.id as number))
       .returning();
     if (!updated) return Response.json({ error: "Task not found." }, { status: 404 });
     return Response.json({ task: updated });

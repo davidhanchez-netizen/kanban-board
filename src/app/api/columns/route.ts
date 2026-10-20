@@ -1,5 +1,5 @@
 import { asc, eq } from "drizzle-orm";
-import { apiError, requireRole, requireUser } from "../_utils";
+import { apiError, requireUser } from "../_utils";
 import { getDb } from "@/app/db";
 import { columns, tasks } from "@/app/db/schema";
 
@@ -20,10 +20,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { user, response } = await requireUser();
+    const { response } = await requireUser();
     if (response) return response;
-    const forbidden = requireRole("ADMIN", user.role);
-    if (forbidden) return forbidden;
 
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") {
@@ -55,10 +53,8 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const { user, response } = await requireUser();
+    const { response } = await requireUser();
     if (response) return response;
-    const forbidden = requireRole("ADMIN", user.role);
-    if (forbidden) return forbidden;
 
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") {
@@ -83,10 +79,8 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { user, response } = await requireUser();
+    const { response } = await requireUser();
     if (response) return response;
-    const forbidden = requireRole("ADMIN", user.role);
-    if (forbidden) return forbidden;
 
     const { searchParams } = new URL(request.url);
     const id = Number(searchParams.get("id"));

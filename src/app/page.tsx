@@ -29,6 +29,16 @@ type Task = {
   createdAt: string;
 };
 
+type TaskComment = {
+  id: number;
+  taskId: number;
+  userId: string;
+  content: string;
+  createdAt: string;
+  userName: string;
+  userImage: string | null;
+};
+
 type UserOption = {
   id: string;
   name: string | null;
@@ -124,7 +134,7 @@ function Modal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[3px]" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section role="dialog" aria-modal="true" aria-label={title} className={`w-full ${wide ? "max-w-xl" : "max-w-md"} animate-[modal-in_.18s_ease-out] rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl`}>
+      <section role="dialog" aria-modal="true" aria-label={title} className={`max-h-[90vh] w-full overflow-y-auto ${wide ? "max-w-xl" : "max-w-md"} animate-[modal-in_.18s_ease-out] rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl`}>
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
@@ -186,14 +196,10 @@ function TaskModal({
     >
       <form onSubmit={submit} className="space-y-4">
         <Field label="Título">
-          {isAdmin ? (
-            <input autoFocus required maxLength={180} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="¿Qué hay que hacer?" className="form-control text-base font-medium" />
-          ) : <p className="text-sm font-medium text-slate-800">{draft.title}</p>}
+          <input autoFocus required maxLength={180} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="¿Qué hay que hacer?" className="form-control text-base font-medium" />
         </Field>
         <Field label="Descripción">
-          {isAdmin ? (
-            <textarea rows={3} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Añade contexto o próximos pasos..." className="form-control resize-y" />
-          ) : <p className="whitespace-pre-wrap text-sm text-slate-600">{draft.description || "Sin descripción."}</p>}
+          <textarea rows={3} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Añade contexto o próximos pasos..." className="form-control resize-y" />
         </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Columna">
@@ -202,11 +208,9 @@ function TaskModal({
             </select>
           </Field>
           <Field label="Prioridad">
-            {isAdmin ? (
-              <select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as Priority })} className="form-control">
-                {(["high", "medium", "low"] as Priority[]).map((priority) => <option key={priority} value={priority}>{priorityLabels[priority]}</option>)}
-              </select>
-            ) : <PriorityPill priority={draft.priority} />}
+            <select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as Priority })} className="form-control">
+              {(["high", "medium", "low"] as Priority[]).map((priority) => <option key={priority} value={priority}>{priorityLabels[priority]}</option>)}
+            </select>
           </Field>
           {isAdmin ? (
             <Field label="Asignada a">
@@ -219,9 +223,7 @@ function TaskModal({
             <Field label="Asignada a"><p className="text-sm text-slate-600">{task?.assigneeName ?? "Tú"}</p></Field>
           )}
           <Field label="Fecha límite">
-            {isAdmin ? (
-              <input type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} className="form-control" />
-            ) : <p className="text-sm text-slate-600">{draft.dueDate || "Sin fecha límite."}</p>}
+            <input type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} className="form-control" />
           </Field>
         </div>
         {task && <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={draft.completed} onChange={(event) => setDraft({ ...draft, completed: event.target.checked })} className="size-4 accent-indigo-600" />Marcar como completada</label>}
@@ -231,11 +233,99 @@ function TaskModal({
           ) : <span />}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="button-secondary">Cancelar</button>
-            <button type="submit" disabled={saving || !draft.columnId} className="button-primary">{saving ? "Guardando..." : isAdmin ? task ? "Guardar cambios" : "Crear tarea" : "Actualizar estado"}</button>
+            <button type="submit" disabled={saving || !draft.columnId} className="button-primary">{saving ? "Guardando..." : task ? "Guardar cambios" : "Crear tarea"}</button>
           </div>
         </div>
       </form>
+      {task && <TaskComments taskId={task.id} />}
     </Modal>
+  );
+}
+
+function TaskComments({ taskId }: { taskId: number }) {
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    request<{ comments: TaskComment[] }>(`/api/comments?taskId=${taskId}`, { cache: "no-store" })
+      .then((result) => {
+        if (active) setComments(result.comments);
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : "No se pudieron cargar los comentarios.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [taskId]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedContent = content.trim();
+    if (!trimmedContent) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      const result = await request<{ comment: TaskComment }>("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({ taskId, content: trimmedContent }),
+      });
+      setComments((current) => [...current, result.comment]);
+      setContent("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo publicar el comentario.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="mt-6 border-t border-slate-100 pt-5">
+      <h3 className="text-sm font-semibold text-slate-900">Comentarios y actividad</h3>
+      {loading ? <p className="mt-3 text-xs text-slate-400">Cargando comentarios...</p> :
+        comments.length ? (
+          <ol className="mt-4 max-h-64 space-y-4 overflow-y-auto">
+            {comments.map((comment) => (
+              <li key={comment.id} className="flex gap-3">
+                <UserAvatar image={comment.userImage} name={comment.userName} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-xs font-semibold text-slate-800">{comment.userName}</span>
+                    <time dateTime={comment.createdAt} className="text-[10px] text-slate-400">
+                      {new Date(comment.createdAt).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                    </time>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-slate-600">{comment.content}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : <p className="mt-3 text-xs text-slate-400">Aún no hay comentarios. Inicia la conversación.</p>}
+      {error && <p role="alert" className="mt-3 text-xs text-rose-600">{error}</p>}
+      <form onSubmit={submit} className="mt-4 space-y-2">
+        <textarea
+          aria-label="Escribe un comentario"
+          maxLength={5000}
+          rows={3}
+          required
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
+          placeholder="Escribe un comentario..."
+          className="form-control resize-y"
+        />
+        <div className="flex justify-end">
+          <button type="submit" disabled={saving || !content.trim()} className="button-primary">
+            {saving ? "Publicando..." : "Comentar"}
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -383,18 +473,16 @@ export default function Home() {
   async function saveTask(draft: TaskDraft, id?: number) {
     const result = await mutate<{ task: Task }>(id ? "/api/tasks" : "/api/tasks", {
       method: id ? "PATCH" : "POST",
-      body: JSON.stringify(id && !isAdmin
-        ? { id, columnId: Number(draft.columnId), completed: draft.completed }
-        : {
-            ...(id ? { id } : {}),
-            title: draft.title,
-            description: draft.description,
-            priority: draft.priority,
-            columnId: Number(draft.columnId),
-            assigneeId: draft.assigneeId || null,
-            dueDate: draft.dueDate || null,
-            ...(id ? { completed: draft.completed } : {}),
-          }),
+      body: JSON.stringify({
+        ...(id ? { id } : {}),
+        title: draft.title,
+        description: draft.description,
+        priority: draft.priority,
+        columnId: Number(draft.columnId),
+        ...(isAdmin ? { assigneeId: draft.assigneeId || null } : {}),
+        dueDate: draft.dueDate || null,
+        ...(id ? { completed: draft.completed } : {}),
+      }),
     });
     if (result) setTaskDialog({ open: false, task: null });
   }
@@ -440,10 +528,9 @@ export default function Home() {
         <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-lg shadow-slate-200/50">
           <span className="mx-auto flex size-12 items-center justify-center rounded-xl bg-indigo-600 text-white"><Icon name="spark" size={22} /></span>
           <h1 className="mt-5 text-xl font-bold tracking-tight text-slate-900">Under Control Workspace</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-500">Inicia sesión para ver tu espacio de trabajo y las tareas que tienes asignadas.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">Inicia sesión para ver el espacio de trabajo y las tareas del equipo.</p>
           <div className="mt-6 grid gap-3">
             <button type="button" onClick={() => void signIn("google")} className="button-secondary w-full !py-3">Continuar con Google</button>
-            <button type="button" onClick={() => void signIn("apple")} className="button-secondary w-full !py-3">Continuar con Apple</button>
           </div>
         </section>
       </main>
@@ -511,7 +598,7 @@ export default function Home() {
                 </div>
                 <button type="button" onClick={() => void signOut({ redirectTo: "/" })} className="button-secondary !px-2.5">Salir</button>
               </div>
-              {isAdmin && <button type="button" onClick={() => setTaskDialog({ open: true, task: null })} disabled={activeColumns.length === 0} className="button-primary !px-3"><Icon name="plus" size={17} /><span className="hidden sm:inline">Nueva tarea</span><span className="sm:hidden">Nueva</span></button>}
+              <button type="button" onClick={() => setTaskDialog({ open: true, task: null })} disabled={activeColumns.length === 0} className="button-primary !px-3"><Icon name="plus" size={17} /><span className="hidden sm:inline">Nueva tarea</span><span className="sm:hidden">Nueva</span></button>
             </div>
           </div>
         </header>
@@ -523,7 +610,7 @@ export default function Home() {
               <div className="flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
                 {(["board", "list", "calendar", "dashboard"] as View[]).map((item) => <button key={item} type="button" aria-label={`Vista ${viewNames[item]}`} onClick={() => setView(item)} className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold transition ${view === item ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}><Icon name={item === "board" ? "board" : item === "list" ? "list" : item === "calendar" ? "calendar" : "chart"} size={15} /><span className="hidden sm:inline">{viewNames[item]}</span></button>)}
               </div>
-              {isAdmin && <button type="button" onClick={() => setColumnDialog({ open: true, column: null })} className="button-secondary"><Icon name="plus" size={16} />Añadir columna</button>}
+              <button type="button" onClick={() => setColumnDialog({ open: true, column: null })} className="button-secondary"><Icon name="plus" size={16} />Añadir columna</button>
             </div>
           </div>
 
@@ -543,7 +630,7 @@ export default function Home() {
                   ].map((stat) => <div key={stat.label} className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/30"><div className="flex items-center justify-between"><span className="text-sm font-medium text-slate-500">{stat.label}</span><span className={`flex size-9 items-center justify-center rounded-lg ${stat.tone}`}><Icon name={stat.icon} /></span></div><div className="mt-4 text-3xl font-bold tracking-tight text-slate-900">{stat.value}</div></div>)}
                 </div>
                 <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/30"><div className="mb-5"><h3 className="font-semibold text-slate-900">Progreso por columna</h3><p className="mt-1 text-xs text-slate-500">Tareas abiertas y completadas en cada etapa.</p></div>
-                  {activeColumns.length ? <div className="space-y-5">{activeColumns.map((column) => { const group = workspaceTasks.filter((task) => task.columnId === column.id); const done = group.filter((task) => task.completed).length; return <div key={column.id}><div className="mb-2 flex items-center justify-between text-sm"><span className="font-medium text-slate-700">{column.name}</span><span className="text-xs text-slate-400">{done} / {group.length} completadas</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${group.length ? done / group.length * 100 : 0}%` }} /></div></div>; })}</div> : <EmptyState title="Aún no hay columnas" body="Añade una columna para empezar a organizar tu trabajo." onAction={isAdmin ? () => setColumnDialog({ open: true, column: null }) : undefined} action={isAdmin ? "Añadir columna" : undefined} />}</div>
+                  {activeColumns.length ? <div className="space-y-5">{activeColumns.map((column) => { const group = workspaceTasks.filter((task) => task.columnId === column.id); const done = group.filter((task) => task.completed).length; return <div key={column.id}><div className="mb-2 flex items-center justify-between text-sm"><span className="font-medium text-slate-700">{column.name}</span><span className="text-xs text-slate-400">{done} / {group.length} completadas</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${group.length ? done / group.length * 100 : 0}%` }} /></div></div>; })}</div> : <EmptyState title="Aún no hay columnas" body="Añade una columna para empezar a organizar tu trabajo." onAction={() => setColumnDialog({ open: true, column: null })} action="Añadir columna" />}</div>
               </section>
             ) : view === "board" ? (
               <div className="-mx-5 overflow-x-auto px-5 pb-4 sm:-mx-8 sm:px-8">
@@ -553,24 +640,24 @@ export default function Home() {
                     return <section key={column.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const id = Number(event.dataTransfer.getData("text/task-id")); const task = tasks.find((item) => item.id === id); if (task) void moveTask(task, column.id); }} className="w-[290px] rounded-xl border border-slate-200/80 bg-[#f0f2f8]/75 p-3 sm:w-[310px]">
                       <div className="mb-3 flex items-center gap-2 px-1 py-1">
                         <span className={`size-2 rounded-full ${["bg-indigo-500", "bg-amber-400", "bg-sky-500", "bg-emerald-500"][index % 4]}`} /><h3 className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800">{column.name}</h3><span className="rounded-md bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">{items.length}</span>
-                        {isAdmin && <div className="relative"><button type="button" aria-label={`Acciones para ${column.name}`} onClick={() => setColumnMenu(columnMenu === column.id ? null : column.id)} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><Icon name="more" size={17} /></button>{columnMenu === column.id && <div className="absolute right-0 top-8 z-20 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl"><button type="button" onClick={() => { setColumnMenu(null); setColumnDialog({ open: true, column }); }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"><Icon name="edit" size={14} />Editar nombre</button><button type="button" onClick={() => void deleteColumn(column)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"><Icon name="trash" size={14} />Eliminar columna</button></div>}</div>}
+                        <div className="relative"><button type="button" aria-label={`Acciones para ${column.name}`} onClick={() => setColumnMenu(columnMenu === column.id ? null : column.id)} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><Icon name="more" size={17} /></button>{columnMenu === column.id && <div className="absolute right-0 top-8 z-20 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl"><button type="button" onClick={() => { setColumnMenu(null); setColumnDialog({ open: true, column }); }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"><Icon name="edit" size={14} />Editar nombre</button><button type="button" onClick={() => void deleteColumn(column)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"><Icon name="trash" size={14} />Eliminar columna</button></div>}</div>
                       </div>
                       <div className="space-y-2.5">
                         {items.map((task) => <TaskCard key={task.id} task={task} onClick={() => showTask(task)} onComplete={() => void mutate("/api/tasks", { method: "PATCH", body: JSON.stringify({ id: task.id, completed: !task.completed }) })} />)}
                         {items.length === 0 && <div className="rounded-lg border border-dashed border-slate-300 bg-white/55 px-3 py-7 text-center text-xs text-slate-400">{search || hasFilters || mineOnly ? "No hay resultados." : "Suelta aquí una tarea o crea una nueva."}</div>}
-                        {isAdmin && <button type="button" onClick={() => setTaskDialog({ open: true, task: null })} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-500 transition hover:bg-white hover:text-indigo-700"><Icon name="plus" size={15} />Añadir tarea</button>}
+                        <button type="button" onClick={() => setTaskDialog({ open: true, task: null })} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-500 transition hover:bg-white hover:text-indigo-700"><Icon name="plus" size={15} />Añadir tarea</button>
                       </div>
                     </section>;
                   })}
-                  {isAdmin && <button type="button" onClick={() => setColumnDialog({ open: true, column: null })} className="flex h-11 w-[170px] items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 text-sm font-medium text-slate-500 transition hover:border-indigo-300 hover:bg-white hover:text-indigo-700"><Icon name="plus" size={16} />Añadir columna</button>}
-                </div> : <EmptyState title="Tu tablero empieza aquí" body="Crea la primera columna para organizar las tareas de este espacio." onAction={isAdmin ? () => setColumnDialog({ open: true, column: null }) : undefined} action={isAdmin ? "Añadir primera columna" : undefined} />}
+                  <button type="button" onClick={() => setColumnDialog({ open: true, column: null })} className="flex h-11 w-[170px] items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 text-sm font-medium text-slate-500 transition hover:border-indigo-300 hover:bg-white hover:text-indigo-700"><Icon name="plus" size={16} />Añadir columna</button>
+                </div> : <EmptyState title="Tu tablero empieza aquí" body="Crea la primera columna para organizar las tareas de este espacio." onAction={() => setColumnDialog({ open: true, column: null })} action="Añadir primera columna" />}
               </div>
             ) : view === "list" ? (
               <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/30">
                 <div className="overflow-x-auto"><table className="w-full min-w-[720px] border-collapse text-left"><thead><tr className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400"><th className="px-5 py-3">Tarea</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3">Prioridad</th><th className="px-4 py-3">Asignada a</th><th className="px-4 py-3">Fecha</th><th className="px-4 py-3 text-right">Acción</th></tr></thead><tbody>
                   {visibleTasks.map((task) => <tr key={task.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70"><td className="max-w-[340px] px-5 py-3.5"><button type="button" onClick={() => showTask(task)} className={`block truncate text-left text-sm font-semibold hover:text-indigo-700 ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</button>{task.description && <p className="mt-1 truncate text-xs text-slate-400">{task.description}</p>}</td><td className="px-4 py-3.5"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin estado"}</span></td><td className="px-4 py-3.5"><PriorityPill priority={task.priority} /></td><td className="px-4 py-3.5"><span className="flex items-center gap-2 text-xs text-slate-600"><span className="flex size-6 items-center justify-center rounded-full bg-indigo-50 text-[9px] font-bold text-indigo-600">{initials(task.assigneeName)}</span>{task.assigneeName}</span></td><td className="px-4 py-3.5 text-xs text-slate-500">{new Date(task.dueDate ?? task.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</td><td className="px-4 py-3.5 text-right"><button type="button" aria-label={task.completed ? "Marcar como pendiente" : "Marcar como completada"} onClick={() => void mutate("/api/tasks", { method: "PATCH", body: JSON.stringify({ id: task.id, completed: !task.completed }) })} className={`rounded-lg p-2 ${task.completed ? "text-emerald-600 hover:bg-emerald-50" : "text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"}`}><Icon name="check" size={17} /></button></td></tr>)}
                   </tbody></table></div>
-                {visibleTasks.length === 0 && <div className="p-8"><EmptyState title="No hay tareas para mostrar" body="Prueba con otros filtros o crea una tarea nueva." onAction={isAdmin ? () => setTaskDialog({ open: true, task: null }) : undefined} action={isAdmin ? "Nueva tarea" : undefined} /></div>}
+                {visibleTasks.length === 0 && <div className="p-8"><EmptyState title="No hay tareas para mostrar" body="Prueba con otros filtros o crea una tarea nueva." onAction={() => setTaskDialog({ open: true, task: null })} action="Nueva tarea" /></div>}
               </div>
             ) : (
               <section className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/30 sm:p-6">
@@ -580,7 +667,7 @@ export default function Home() {
                   const label = new Date(date).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
                   const previous = index ? new Date(list[index - 1].dueDate ?? list[index - 1].createdAt).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" }) : "";
                   return <div key={task.id} className="flex gap-4"><div className="flex w-28 shrink-0 justify-end pt-4 text-right text-[11px] font-semibold capitalize text-slate-400 sm:w-36">{label !== previous ? label : ""}</div><div className="relative flex flex-1 gap-3 border-l border-slate-200 pl-5 pb-1"><span className="absolute -left-[5px] top-[21px] size-2.5 rounded-full border-2 border-white bg-indigo-500 shadow-sm" /><button type="button" onClick={() => showTask(task)} className="flex min-w-0 flex-1 items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-left transition hover:border-indigo-100 hover:bg-indigo-50/40"><span className="min-w-0"><span className={`block truncate text-sm font-semibold ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</span><span className="mt-1 block truncate text-xs text-slate-400">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin estado"} · {task.dueDate ? "Fecha límite" : "Creada"}</span></span><PriorityPill priority={task.priority} /></button></div></div>;
-                })}</div> : <EmptyState title="Tu cronología está vacía" body="Las tareas de este espacio aparecerán aquí." onAction={isAdmin ? () => setTaskDialog({ open: true, task: null }) : undefined} action={isAdmin ? "Nueva tarea" : undefined} />}
+                })}</div> : <EmptyState title="Tu cronología está vacía" body="Las tareas de este espacio aparecerán aquí." onAction={() => setTaskDialog({ open: true, task: null })} action="Nueva tarea" />}
               </section>
             )}
         </div>
