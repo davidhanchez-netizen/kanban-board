@@ -87,6 +87,7 @@ export async function GET() {
     return Response.json({
       profile: {
         ...profile,
+        outOfOffice: profile.outOfOffice ?? false,
         settings: parseSettings(profile.settings) ?? defaultSettings,
       },
     }, { headers: { "Cache-Control": "no-store" } });
@@ -115,7 +116,11 @@ export async function PATCH(request: Request) {
     if (values.name !== undefined && !(values.name as string).trim()) {
       return Response.json({ error: "Name cannot be empty." }, { status: 400 });
     }
-    if (values.outOfOffice !== undefined && typeof values.outOfOffice !== "boolean") {
+    if (
+      values.outOfOffice !== undefined &&
+      values.outOfOffice !== null &&
+      typeof values.outOfOffice !== "boolean"
+    ) {
       return Response.json({ error: "Out-of-office must be a boolean." }, { status: 400 });
     }
     const parsedSettings = values.settings === undefined ? undefined : parseSettings(values.settings);
@@ -205,7 +210,7 @@ export async function PATCH(request: Request) {
         jobTitle: preference.jobTitle,
         department: preference.department,
         about: preference.about,
-        outOfOffice: preference.outOfOffice,
+        outOfOffice: preference.outOfOffice ?? false,
         settings: parseSettings(preference.settings) ?? defaultSettings,
       },
     });

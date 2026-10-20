@@ -235,20 +235,23 @@ export function SettingsModal({
     setError("");
     setSaved(false);
     try {
+      const payload = tab === "profile"
+        ? {
+            name: profile.name ?? "",
+            image: profile.image,
+            pronouns: profile.pronouns ?? "",
+            pronunciation: profile.pronunciation ?? "",
+            pronunciationAudio: profile.pronunciationAudio,
+            jobTitle: profile.jobTitle ?? "",
+            department: profile.department ?? "",
+            about: profile.about ?? "",
+            outOfOffice: typeof profile.outOfOffice === "boolean" ? profile.outOfOffice : false,
+            settings: profile.settings,
+          }
+        : { settings: profile.settings };
       const result = await profileRequest<{ profile: UserProfile }>({
         method: "PATCH",
-        body: JSON.stringify({
-          name: profile.name ?? "",
-          image: profile.image,
-          pronouns: profile.pronouns ?? "",
-          pronunciation: profile.pronunciation ?? "",
-          pronunciationAudio: profile.pronunciationAudio,
-          jobTitle: profile.jobTitle ?? "",
-          department: profile.department ?? "",
-          about: profile.about ?? "",
-          outOfOffice: profile.outOfOffice,
-          settings: profile.settings,
-        }),
+        body: JSON.stringify(payload),
       });
       savedSettings.current = result.profile.settings;
       setProfile(result.profile);
