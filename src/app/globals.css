@@ -24,3 +24,95 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+html[data-theme="dark"] body {
+  --background: #10131b;
+  --foreground: #e2e8f0;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] body {
+    --background: #10131b;
+    --foreground: #e2e8f0;
+  }
+
+  html[data-theme="system"] .kanban-app {
+    background-color: #10131b !important;
+    color: #e2e8f0;
+  }
+
+  html[data-theme="system"] .kanban-app .bg-white,
+  html[data-theme="system"] .kanban-app .bg-white\/90,
+  html[data-theme="system"] .kanban-app .bg-white\/55 {
+    background-color: #1b202b !important;
+  }
+
+  html[data-theme="system"] .kanban-app .bg-\[\#f7f8fc\],
+  html[data-theme="system"] .kanban-app .bg-\[\#f0f2f8\]\/75 {
+    background-color: #10131b !important;
+  }
+
+  html[data-theme="system"] .kanban-app .text-slate-900,
+  html[data-theme="system"] .kanban-app .text-slate-800,
+  html[data-theme="system"] .kanban-app .text-slate-700,
+  html[data-theme="system"] .kanban-app .text-slate-600 {
+    color: #e2e8f0 !important;
+  }
+
+  html[data-theme="system"] .kanban-app [class*="border-slate-"] {
+    border-color: #343b49 !important;
+  }
+
+  html[data-theme="system"] .kanban-app input,
+  html[data-theme="system"] .kanban-app textarea,
+  html[data-theme="system"] .kanban-app select {
+    background-color: #171c26;
+    color: #e2e8f0;
+  }
+}
+
+html[data-theme="dark"] .kanban-app {
+  background-color: #10131b !important;
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .kanban-app .bg-white,
+html[data-theme="dark"] .kanban-app .bg-white\/90,
+html[data-theme="dark"] .kanban-app .bg-white\/55 {
+  background-color: #1b202b !important;
+}
+
+html[data-theme="dark"] .kanban-app .bg-\[\#f7f8fc\],
+html[data-theme="dark"] .kanban-app .bg-\[\#f0f2f8\]\/75 {
+  background-color: #10131b !important;
+}
+
+html[data-theme="dark"] .kanban-app .text-slate-900,
+html[data-theme="dark"] .kanban-app .text-slate-800,
+html[data-theme="dark"] .kanban-app .text-slate-700,
+html[data-theme="dark"] .kanban-app .text-slate-600 {
+  color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .kanban-app [class*="border-slate-"] {
+  border-color: #343b49 !important;
+}
+
+html[data-theme="dark"] .kanban-app input,
+html[data-theme="dark"] .kanban-app textarea,
+html[data-theme="dark"] .kanban-app select {
+  background-color: #171c26;
+  color: #e2e8f0;
+}
+
+html[data-sidebar-color="slate"] .kanban-app > aside {
+  background-color: #f1f5f9;
+}
+
+html[data-sidebar-color="violet"] .kanban-app > aside {
+  background-color: #faf5ff;
+}
+
+html[data-compact="true"] .kanban-app article {
+  padding: 0.65rem;
+}

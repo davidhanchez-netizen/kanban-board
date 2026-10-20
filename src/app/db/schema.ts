@@ -3,6 +3,7 @@ import {
   date,
   bigint,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -21,6 +22,41 @@ export const users = pgTable("users", {
   emailVerified: timestamp("email_verified", { withTimezone: true }),
   image: text("image"),
   role: userRoleEnum("role").notNull().default("MEMBER"),
+});
+
+export type UserSettings = {
+  browserNotifications: boolean;
+  projectNotifications: boolean;
+  emailNotifications: boolean;
+  doNotDisturb: boolean;
+  theme: "system" | "light" | "dark";
+  sidebarColor: "indigo" | "slate" | "violet";
+  language: "es" | "en";
+  weekStartsOn: "monday" | "sunday";
+  toastDuration: "short" | "normal" | "long";
+  compactMode: boolean;
+  colorBlindMode: boolean;
+  showRowNumbers: boolean;
+  navigationLabels: "icons" | "icons-and-text";
+  navigationOrder: string[];
+  extraCelebrations: boolean;
+  recurringTasks: boolean;
+  muteDueToday: boolean;
+};
+
+export const userPreferences = pgTable("user_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  pronouns: text("pronouns"),
+  pronunciation: text("pronunciation"),
+  pronunciationAudio: text("pronunciation_audio"),
+  jobTitle: text("job_title"),
+  department: text("department"),
+  about: text("about"),
+  outOfOffice: boolean("out_of_office").notNull().default(false),
+  settings: jsonb("settings").$type<UserSettings>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const accounts = pgTable(

@@ -27,6 +27,8 @@ Para añadir comentarios sin modificar los datos actuales, ejecuta una sola vez 
 
 Para crear espacios de trabajo persistentes y adjuntos de comentarios, ejecuta una sola vez [`drizzle/0003_workspaces_and_comment_attachments.sql`](./drizzle/0003_workspaces_and_comment_attachments.sql) después de las migraciones anteriores. La migración conserva los espacios existentes y asocia las columnas actuales a sus espacios correspondientes. Los adjuntos aceptan imágenes, PDF, texto y CSV de hasta 2 MB por archivo (máximo 5 por comentario); se guardan como Base64 en Neon.
 
+Para habilitar el perfil y los ajustes persistentes, ejecuta una sola vez [`drizzle/0004_user_preferences.sql`](./drizzle/0004_user_preferences.sql) después de las migraciones anteriores. Esta migración es aditiva y crea preferencias vinculadas a `users` con borrado en cascada; no altera tareas, comentarios ni espacios existentes.
+
 Las tareas previas sin `assignee_id` siguen visibles para los usuarios autenticados, pero no se podrán asignar automáticamente a miembros hasta que un administrador las asigne. Las operaciones de escritura se autorizan también en servidor.
 
 ### 3. Iniciar y comprobar
@@ -34,6 +36,8 @@ Las tareas previas sin `assignee_id` siguen visibles para los usuarios autentica
 Instala dependencias y ejecuta `npm run dev`. Los usuarios inician sesión con Google. Los espacios de trabajo creados desde el botón `+` de la sección Trabajo se comparten con los usuarios autenticados. El panel de asignación aparece a los administradores para asignar tareas a perfiles existentes. Los miembros pueden ver y editar las tareas del equipo, crear nuevas tareas (asignadas automáticamente a ellos) y cambiar columnas o estados; la asignación y eliminación de tareas siguen siendo exclusivas de administradores. Todos los usuarios autenticados pueden gestionar columnas y comentar en tareas. Los comentarios aceptan Markdown; el contenido HTML arbitrario no se interpreta.
 
 Las rutas de Auth.js están en `/api/auth/*`. `/api/columns`, `/api/tasks` y `/api/comments` exigen sesión. Los miembros pueden editar los detalles de las tareas, pero no reasignarlas; la eliminación de tareas y la lista de usuarios/asignables siguen siendo exclusivas de administradores.
+
+El menú de usuario incluye el perfil y los ajustes persistentes en `user_preferences`. Las fotos de perfil (máximo 1 MB) y los audios de pronunciación (máximo 3 MB) se guardan en Neon como Data URL. La bandeja muestra las tareas asignadas al usuario; no es todavía un sistema de notificaciones individuales. Slack/Teams, invitaciones, cierre de otras sesiones y eliminación de cuenta permanecen deshabilitados porque el proyecto no tiene esos servicios o flujos de seguridad.
 
 ### Actualizaciones en tiempo real
 

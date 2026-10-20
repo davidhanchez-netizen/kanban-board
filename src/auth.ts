@@ -32,11 +32,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       const email = user.email.trim().toLowerCase();
       const role = adminEmails.has(email) ? "ADMIN" : undefined;
+      const [existingUser] = await getDb()
+        .select({ name: users.name, image: users.image })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1);
       await getDb()
         .update(users)
         .set({
-          ...(user.name ? { name: user.name } : {}),
-          ...(user.image ? { image: user.image } : {}),
+          ...(user.name && !existingUser?.name ? { name: user.name } : {}),
+          ...(user.image && !existingUser?.image?.startsWith("data:image/") ? { image: user.image } : {}),
           ...(role ? { role } : {}),
         })
         .where(eq(users.id, user.id));
