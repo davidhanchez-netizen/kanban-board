@@ -109,3 +109,40 @@ export async function POST(request: Request) {
     return apiError(error);
   }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    const { user, response } = await requireUser();
+    if (response) return response;
+
+    const body: unknown = await request.json();
+    if (!body || typeof body !== "object") {
+      return Response.json({ error: "Comment id and content are required." }, { status: 400 });
+    }
+    const { id, content } = body as { id?: unknown; content?: unknown };
+    if (!Number.isSafeInteger(id) || (id as number) < 1 || typeof content !== "string" || content.length > 5000) {
+      return Response.json({ error: "Provide a valid comment id and content of up to 5000 characters." }, { status: 400 });
+    }
+
+    const db = getDb();
+    const [existing] = await db
+      .select({ userId: comments.userId })
+      .from(comments)
+      .where(eq(comments.id, id as number))
+      .limit(1);
+    if (!existing) return Response.json({ error: "Comment not found." }, { status: 404 });
+    if (existing.userId !== user.id) {
+      return Response.json({ error: "You can only edit your own comments." }, { status: 403 });
+    }
+
+    const [updated] = await db
+      .update(comments)
+      .set({ content })
+      .where(eq(comments.id, id as number))
+      .returning();
+    revalidatePath("/");
+    return Response.json({ comment: updated });
+  } catch (error) {
+    return apiError(error);
+  }
+}

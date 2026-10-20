@@ -49,6 +49,7 @@ type CommentAttachment = {
 };
 
 type MentionOption = { id: string; name: string };
+type PendingAttachment = { file: File; marker: string };
 
 type UserOption = {
   id: string;
@@ -280,7 +281,7 @@ function TaskComments({
 }) {
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [content, setContent] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<PendingAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -288,6 +289,7 @@ function TaskComments({
   const [preview, setPreview] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -311,6 +313,17 @@ function TaskComments({
       });
     return () => { active = false; };
   }, [taskId]);
+
+  useEffect(() => {
+    if (!toolsOpen) return;
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (event.target instanceof Node && !toolsMenuRef.current?.contains(event.target)) {
+        setToolsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [toolsOpen]);
 
   function insertMarkdown(value: string) {
     const editor = editorRef.current;
@@ -348,14 +361,17 @@ function TaskComments({
     let commentCreated = false;
     let uploadedCount = 0;
     try {
+      const commentContent = files.reduce((value, pending) => value.replace(pending.marker, ""), trimmedContent).trim();
       const result = await request<{ comment: TaskComment }>("/api/comments", {
         method: "POST",
-        body: JSON.stringify({ taskId, content: trimmedContent, attachmentsCount: files.length }),
+        body: JSON.stringify({ taskId, content: commentContent, attachmentsCount: files.length }),
       });
       commentCreated = true;
       setComments((current) => current.map((comment) => comment.id === optimisticId ? result.comment : comment));
 
-      for (const file of files) {
+      let commentMarkdown = commentContent;
+      for (const pending of files) {
+        const { file } = pending;
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("No se pudo leer el archivo."));
@@ -374,6 +390,19 @@ function TaskComments({
           comment.id === result.comment.id
             ? { ...comment, attachments: [...comment.attachments, attachment] }
             : comment,
+        ));
+        const url = `/api/comment-attachments?id=${attachment.id}`;
+        const safeName = file.name.replace(/[\[\]\\]/g, "");
+        const markdown = file.type.startsWith("image/")
+          ? `![${safeName}](${url})`
+          : `[${safeName}](${url})`;
+        commentMarkdown = `${commentMarkdown}${commentMarkdown ? "\n" : ""}${markdown}`;
+        const { comment: updatedComment } = await request<{ comment: TaskComment }>("/api/comments", {
+          method: "PATCH",
+          body: JSON.stringify({ id: result.comment.id, content: commentMarkdown }),
+        });
+        setComments((current) => current.map((comment) =>
+          comment.id === updatedComment.id ? { ...comment, ...updatedComment } : comment,
         ));
         uploadedCount++;
       }
@@ -400,6 +429,7 @@ function TaskComments({
     { label: "Encabezado pequeño", value: "### " },
     { label: "Lista con viñetas", value: "- " },
     { label: "Lista numerada", value: "1. " },
+    { label: "Mención", value: "@" },
     { label: "Emoji", value: "😀" },
     { label: "Enlace", value: "[texto](https://)" },
     { label: "Tabla", value: "| Columna 1 | Columna 2 |\n| --- | --- |\n| Valor | Valor |" },
@@ -427,6 +457,7 @@ function TaskComments({
                   <MarkdownContent content={comment.content} />
                   {comment.attachments.map((attachment) => {
                     const url = `/api/comment-attachments?id=${attachment.id}`;
+                    if (comment.content.includes(`(${url})`)) return null;
                     return attachment.mimeType.startsWith("image/") ? (
                       <a key={attachment.id} href={url} target="_blank" rel="noreferrer" className="mt-2 block w-fit">
                         <Image src={url} alt={attachment.fileName} width={480} height={320} unoptimized className="max-h-48 max-w-full rounded-lg border border-slate-200 object-contain" />
@@ -444,15 +475,15 @@ function TaskComments({
         ) : <p className="mt-3 text-xs text-slate-400">Aún no hay comentarios. Inicia la conversación.</p>}
       {error && <p role="alert" className="mt-3 text-xs text-rose-600">{error}</p>}
       <form onSubmit={submit} className="mt-4 space-y-2">
-        <div className="overflow-hidden rounded-xl border border-slate-200">
+        <div className="rounded-xl border border-slate-200">
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-2 py-1.5">
-            <div className="relative">
-              <button type="button" aria-label="Insertar formato o contenido" onClick={() => setToolsOpen((open) => !open)} className="button-secondary !px-2 !py-1"><Icon name="plus" size={15} /></button>
-              {toolsOpen && <div className="absolute bottom-10 left-0 z-30 grid w-52 grid-cols-1 gap-0.5 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                {toolbarItems.map((item) => <button key={item.label} type="button" onClick={() => insertMarkdown(item.value)} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700">{item.label}</button>)}
+            <div ref={toolsMenuRef} className="relative">
+              <button type="button" aria-label="Insertar formato o contenido" aria-expanded={toolsOpen} aria-haspopup="menu" onClick={() => setToolsOpen((open) => !open)} className="button-secondary !px-2 !py-1"><Icon name="plus" size={15} /></button>
+              {toolsOpen && <div role="menu" className="absolute bottom-10 left-0 z-50 grid max-h-72 w-56 grid-cols-1 gap-0.5 overflow-y-auto rounded-md border border-slate-200 bg-white p-1.5 shadow-lg dark:border-zinc-700 dark:bg-zinc-800">
+                {toolbarItems.map((item) => <button key={item.label} type="button" role="menuitem" onClick={() => insertMarkdown(item.value)} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-zinc-200 dark:hover:bg-zinc-700">{item.label}</button>)}
                 <span className="px-2.5 pt-2 text-[10px] font-semibold uppercase text-slate-400">Mencionar a alguien</span>
-                {mentionUsers.slice(0, 8).map((member) => <button key={member.id} type="button" onClick={() => insertMarkdown(`@${member.name.replace(/\s+/g, "")} `)} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700">@{member.name}</button>)}
-                <button type="button" onClick={() => { setToolsOpen(false); fileInputRef.current?.click(); }} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700">Adjuntar imagen o archivo</button>
+                {mentionUsers.slice(0, 8).map((member) => <button key={member.id} type="button" role="menuitem" onClick={() => insertMarkdown(`@${member.name.replace(/\s+/g, "")} `)} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-zinc-200 dark:hover:bg-zinc-700">@{member.name}</button>)}
+                <button type="button" role="menuitem" onClick={() => { setToolsOpen(false); fileInputRef.current?.click(); }} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-zinc-200 dark:hover:bg-zinc-700">Adjuntar imagen o archivo</button>
               </div>}
             </div>
             <button type="button" onClick={() => setPreview((value) => !value)} className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-white">{preview ? "Editar Markdown" : "Vista previa"}</button>
@@ -476,14 +507,13 @@ function TaskComments({
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv"
+          accept="image/*,application/pdf"
           className="hidden"
           onChange={(event) => {
             const selected = Array.from(event.target.files ?? []);
-            const allowedTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf", "text/plain", "text/csv"]);
             const accepted = selected.filter((file) => {
-              if (!allowedTypes.has(file.type)) {
-                setError(`${file.name}: tipo de archivo no permitido.`);
+              if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+                setError(`${file.name}: selecciona una imagen o un PDF.`);
                 return false;
               }
               if (file.size > 2 * 1024 * 1024) {
@@ -492,11 +522,20 @@ function TaskComments({
               }
               return true;
             });
-            setFiles((current) => [...current, ...accepted].slice(0, 5));
+            const remainingSlots = Math.max(0, 5 - files.length);
+            if (accepted.length > remainingSlots) setError("Puedes adjuntar hasta 5 archivos por comentario.");
+            const pending = accepted.slice(0, remainingSlots).map((file) => ({
+              file,
+              marker: file.type.startsWith("image/")
+                ? `![${file.name}](attachment-pending:${crypto.randomUUID()})`
+                : `[${file.name}](attachment-pending:${crypto.randomUUID()})`,
+            }));
+            setFiles((current) => [...current, ...pending]);
+            if (pending.length) insertMarkdown(`${content && !content.endsWith("\n") ? "\n" : ""}${pending.map((item) => item.marker).join("\n")}`);
             event.target.value = "";
           }}
         />
-        {files.length > 0 && <ul className="flex flex-wrap gap-2">{files.map((file, index) => <li key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-[11px] text-slate-600"><span className="max-w-40 truncate">{file.name}</span><button type="button" aria-label={`Quitar ${file.name}`} onClick={() => setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))} className="rounded-full p-1 hover:bg-white"><Icon name="close" size={12} /></button></li>)}</ul>}
+        {files.length > 0 && <ul className="flex flex-wrap gap-2">{files.map(({ file, marker }, index) => <li key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-[11px] text-slate-600"><span className="max-w-40 truncate">{file.name}</span><button type="button" aria-label={`Quitar ${file.name}`} onClick={() => { setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index)); setContent((current) => current.replace(marker, "").replace(/\n{3,}/g, "\n\n")); }} className="rounded-full p-1 hover:bg-white"><Icon name="close" size={12} /></button></li>)}</ul>}
         <p className="text-[10px] text-slate-400">Hasta 5 archivos, 2 MB cada uno. Imágenes, PDF, texto y CSV.</p>
         <div className="flex justify-end">
           <button type="submit" disabled={saving || (!content.trim() && files.length === 0)} className="button-primary">
@@ -513,14 +552,17 @@ function MarkdownContent({ content }: { content: string }) {
   const blocks: React.ReactNode[] = [];
 
   function inline(text: string, keyPrefix: string): React.ReactNode[] {
-    const token = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+    const token = /(!\[[^\]]*\]\(\/api\/comment-attachments\?id=\d+\)|\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
     const nodes: React.ReactNode[] = [];
     let lastIndex = 0;
     for (const match of text.matchAll(token)) {
       const index = match.index ?? 0;
       if (index > lastIndex) nodes.push(text.slice(lastIndex, index));
       const value = match[0];
-      if (value.startsWith("[")) {
+      if (value.startsWith("![")) {
+        const image = value.match(/^!\[([^\]]*)\]\((\/api\/comment-attachments\?id=\d+)\)$/);
+        if (image) nodes.push(<Image key={`${keyPrefix}-${index}`} src={image[2]} alt={image[1]} width={480} height={320} unoptimized className="my-2 max-h-48 max-w-full rounded-lg border border-slate-200 object-contain" />);
+      } else if (value.startsWith("[")) {
         const link = value.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
         if (link) nodes.push(<a key={`${keyPrefix}-${index}`} href={link[2]} target="_blank" rel="noreferrer" className="text-indigo-600 underline">{link[1]}</a>);
       } else if (value.startsWith("`")) {
