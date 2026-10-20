@@ -248,3 +248,161 @@ html[data-palette="monochrome"] .kanban-app > aside,
 html[data-palette="monochrome"] .kanban-app > main > header {
   filter: grayscale(1);
 }
+
+.kanban-app {
+  --feature-surface: #ffffff;
+  --feature-border: #e2e8f0;
+  --feature-muted: #64748b;
+  --feature-track: #f1f5f9;
+  --feature-tag: #f1f5f9;
+}
+
+.kanban-app .feature-panel {
+  background-color: var(--feature-surface);
+  border-color: var(--feature-border);
+}
+
+.kanban-app .feature-muted {
+  color: var(--feature-muted);
+}
+
+.kanban-app .feature-track {
+  background-color: var(--feature-track);
+}
+
+.kanban-app .feature-tag {
+  background-color: var(--feature-tag);
+  color: var(--feature-muted);
+}
+
+.kanban-app .feature-input {
+  background-color: var(--feature-surface);
+  border-color: var(--feature-border);
+  color: inherit;
+}
+
+.kanban-app .feature-link {
+  color: var(--ui-accent);
+}
+
+.kanban-app .feature-panel .button-secondary {
+  border-color: var(--feature-border);
+  background-color: var(--feature-surface);
+  color: var(--feature-muted);
+}
+
+.kanban-app .feature-panel .button-secondary:hover {
+  background-color: var(--feature-track);
+  color: var(--foreground);
+}
+
+html[data-theme="dark"] .kanban-app {
+  --feature-surface: #1b202b;
+  --feature-border: #343b49;
+  --feature-muted: #a0aec0;
+  --feature-track: #303746;
+  --feature-tag: #303746;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] .kanban-app {
+    --feature-surface: #1b202b;
+    --feature-border: #343b49;
+    --feature-muted: #a0aec0;
+    --feature-track: #303746;
+    --feature-tag: #303746;
+  }
+
+  html[data-theme="light"] .kanban-app {
+    --feature-surface: #ffffff;
+    --feature-border: #e2e8f0;
+    --feature-muted: #64748b;
+    --feature-track: #f1f5f9;
+    --feature-tag: #f1f5f9;
+  }
+}
+
+html[data-theme="light"] .kanban-app {
+  --feature-surface: #ffffff;
+  --feature-border: #e2e8f0;
+  --feature-muted: #64748b;
+  --feature-track: #f1f5f9;
+  --feature-tag: #f1f5f9;
+}
+
+html[data-palette="cyberpunk"] .kanban-app {
+  --feature-surface: #191725;
+  --feature-border: #393349;
+  --feature-muted: #c4b9d8;
+  --feature-track: #30283b;
+  --feature-tag: #30283b;
+}
+
+html[data-palette="forest"][data-theme="light"] .kanban-app {
+  --feature-surface: #f7fff9;
+  --feature-border: #bbf7d0;
+  --feature-muted: #4b6354;
+  --feature-track: #dcfce7;
+  --feature-tag: #dcfce7;
+}
+
+html[data-palette="sunset"][data-theme="light"] .kanban-app {
+  --feature-surface: #fffaf5;
+  --feature-border: #fed7aa;
+  --feature-muted: #765b4c;
+  --feature-track: #ffedd5;
+  --feature-tag: #ffedd5;
+}
+
+html[data-palette="monochrome"] .kanban-app {
+  --feature-border: #9ca3af;
+  --feature-muted: #4b5563;
+  --feature-track: #e5e7eb;
+  --feature-tag: #e5e7eb;
+}
+
+html[data-theme="dark"][data-palette="monochrome"] .kanban-app {
+  --feature-surface: #1b1b1b;
+  --feature-border: #525252;
+  --feature-muted: #d4d4d4;
+  --feature-track: #404040;
+  --feature-tag: #404040;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"][data-palette="forest"] .kanban-app {
+    background-color: #10131b !important;
+  }
+
+  html[data-theme="system"][data-palette="sunset"] .kanban-app {
+    background-color: #10131b !important;
+  }
+}
+
+html[data-color-blind="true"] .kanban-app span.size-2[class*="bg-rose-"] {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  border-radius: 0;
+}
+
+html[data-color-blind="true"] .kanban-app span.size-2[class*="bg-amber-"] {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  border-radius: 0;
+}
+
+html[data-color-blind="true"] .kanban-app span.size-2[class*="bg-emerald-"] {
+  border: 2px solid currentColor;
+}
+
+html[data-color-blind="true"] .kanban-app .priority-high {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  border-radius: 0;
+}
+
+html[data-color-blind="true"] .kanban-app .priority-medium {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  border-radius: 0;
+}
+
+html[data-color-blind="true"] .kanban-app .priority-low {
+  border: 1px solid currentColor;
+}

@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { apiError, isPriority, requireRole, requireUser } from "../_utils";
 import { publishWorkspaceEvent } from "../_pusher";
+import { runTaskAutomations, runTaskDeletionAutomation } from "../agents/_automation";
 import { getDb } from "@/app/db";
 import { columns, tasks, users } from "@/app/db/schema";
 
@@ -102,9 +103,10 @@ export async function POST(request: Request) {
         dueDate: (task.dueDate as string | null | undefined) ?? null,
       })
       .returning();
-    await publishWorkspaceEvent(destination.workspaceId, "task:created", { task: created });
+    const taskAfterAutomation = await runTaskAutomations(destination.workspaceId, created, "created");
+    await publishWorkspaceEvent(destination.workspaceId, "task:created", { task: taskAfterAutomation });
     revalidatePath("/");
-    return Response.json({ task: created }, { status: 201 });
+    return Response.json({ task: taskAfterAutomation }, { status: 201 });
   } catch (error) {
     return apiError(error);
   }
@@ -130,7 +132,7 @@ export async function PATCH(request: Request) {
     }
     const db = getDb();
     const [previous] = await db
-      .select({ id: tasks.id, columnId: tasks.columnId, workspaceId: columns.workspaceId })
+      .select({ id: tasks.id, columnId: tasks.columnId, workspaceId: columns.workspaceId, dueDate: tasks.dueDate })
       .from(tasks)
       .innerJoin(columns, eq(tasks.columnId, columns.id))
       .where(eq(tasks.id, update.id as number))
@@ -209,8 +211,14 @@ export async function PATCH(request: Request) {
       .from(columns)
       .where(eq(columns.id, updated.columnId))
       .limit(1);
+    const taskAfterAutomation = await runTaskAutomations(
+      destination.workspaceId,
+      updated,
+      "updated",
+      previous.dueDate,
+    );
     const eventName = previous.columnId === updated.columnId ? "task:updated" : "task:moved";
-    const eventData = { task: updated, previousColumnId: previous.columnId };
+    const eventData = { task: taskAfterAutomation, previousColumnId: previous.columnId };
     await publishWorkspaceEvent(destination.workspaceId, eventName, eventData);
     if (previous.workspaceId !== destination.workspaceId) {
       await publishWorkspaceEvent(previous.workspaceId, eventName, {
@@ -220,7 +228,7 @@ export async function PATCH(request: Request) {
       });
     }
     revalidatePath("/");
-    return Response.json({ task: updated });
+    return Response.json({ task: taskAfterAutomation });
   } catch (error) {
     return apiError(error);
   }
@@ -248,6 +256,7 @@ export async function DELETE(request: Request) {
     if (!existing) return Response.json({ error: "Task not found." }, { status: 404 });
     const [deleted] = await db.delete(tasks).where(eq(tasks.id, id)).returning({ id: tasks.id });
     if (!deleted) return Response.json({ error: "Task not found." }, { status: 404 });
+    await runTaskDeletionAutomation(existing.workspaceId);
     await publishWorkspaceEvent(existing.workspaceId, "task:deleted", { id: deleted.id, columnId: existing.columnId });
     revalidatePath("/");
     return Response.json({ success: true });

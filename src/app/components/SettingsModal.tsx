@@ -174,6 +174,7 @@ export function SettingsModal({
     document.documentElement.dataset.palette = settings.themeStyle;
     document.documentElement.dataset.sidebarColor = settings.sidebarColor;
     document.documentElement.dataset.compact = String(settings.compactMode);
+    document.documentElement.dataset.colorBlind = String(settings.colorBlindMode);
   }, []);
 
   useEffect(() => {
@@ -182,6 +183,7 @@ export function SettingsModal({
     document.documentElement.dataset.palette = profile.settings.themeStyle;
     document.documentElement.dataset.sidebarColor = profile.settings.sidebarColor;
     document.documentElement.dataset.compact = String(profile.settings.compactMode);
+    document.documentElement.dataset.colorBlind = String(profile.settings.colorBlindMode);
   }, [profile]);
 
   function updateField<K extends keyof UserProfile>(key: K, value: UserProfile[K]) {
@@ -195,6 +197,29 @@ export function SettingsModal({
       settings: { ...current.settings, [key]: value },
     } : current);
     setSaved(false);
+  }
+
+  async function updateBrowserNotifications(enabled: boolean) {
+    if (enabled) {
+      if (!("Notification" in window)) {
+        setError("Este navegador no admite notificaciones de escritorio.");
+        return;
+      }
+      try {
+        const permission = Notification.permission === "granted"
+          ? "granted"
+          : await Notification.requestPermission();
+        if (permission !== "granted") {
+          setError("Concede permiso de notificaciones en el navegador para activar esta opción.");
+          return;
+        }
+      } catch {
+        setError("No se pudo solicitar el permiso de notificaciones del navegador.");
+        return;
+      }
+    }
+    setError("");
+    updateSetting("browserNotifications", enabled);
   }
 
   async function selectAvatar(event: ChangeEvent<HTMLInputElement>) {
@@ -333,11 +358,10 @@ export function SettingsModal({
               </div>}
 
               {tab === "notifications" && <div className="divide-y divide-slate-100">
-                <Toggle label="Notificaciones del navegador" description="Preferencia guardada; el permiso del navegador aún debe activarse." checked={profile.settings.browserNotifications} onChange={(value) => updateSetting("browserNotifications", value)} />
+                <Toggle label="Notificaciones del navegador" description="Solicita permiso al navegador y avisa cuando te asignen una tarea." checked={profile.settings.browserNotifications} onChange={(value) => void updateBrowserNotifications(value)} />
                 <Toggle label="Notificaciones de proyectos y objetivos" checked={profile.settings.projectNotifications} onChange={(value) => updateSetting("projectNotifications", value)} />
-                <Toggle label="Notificaciones por correo electrónico" checked={profile.settings.emailNotifications} onChange={(value) => updateSetting("emailNotifications", value)} />
-                <Toggle label="No molestar" description="Guarda la preferencia para futuras notificaciones." checked={profile.settings.doNotDisturb} onChange={(value) => updateSetting("doNotDisturb", value)} />
-                <div className="py-4"><p className="text-sm font-semibold text-slate-800">Integraciones</p><p className="mt-1 text-xs text-slate-500">Slack y Microsoft Teams no están conectados en este proyecto.</p><div className="mt-3 flex gap-2"><button type="button" disabled className="button-secondary opacity-50">Conectar Slack</button><button type="button" disabled className="button-secondary opacity-50">Conectar Teams</button></div></div>
+                <Toggle label="No molestar" description="Silencia los avisos de tareas asignadas en este navegador." checked={profile.settings.doNotDisturb} onChange={(value) => updateSetting("doNotDisturb", value)} />
+                <div className="py-4"><p className="text-sm font-semibold text-slate-800">Canales no configurados</p><p className="mt-1 text-xs text-slate-500">Las notificaciones por correo y las integraciones de Slack/Teams requieren servicios externos que este proyecto no tiene conectados.</p></div>
               </div>}
 
               {tab === "account" && <div className="space-y-5">
@@ -386,7 +410,7 @@ export function SettingsModal({
                 <SelectField label="Idioma" value={profile.settings.language} onChange={(value) => updateSetting("language", value as UserSettings["language"])} options={[["es", "Español"], ["en", "English"]]} />
                 <SelectField label="Primer día de la semana" value={profile.settings.weekStartsOn} onChange={(value) => updateSetting("weekStartsOn", value as UserSettings["weekStartsOn"])} options={[["monday", "Lunes"], ["sunday", "Domingo"]]} />
                 <SelectField label="Duración de avisos" value={profile.settings.toastDuration} onChange={(value) => updateSetting("toastDuration", value as UserSettings["toastDuration"])} options={[["short", "Corta"], ["normal", "Normal"], ["long", "Larga"]]} />
-                <div className="sm:col-span-2"><Toggle label="Modo compacto" checked={profile.settings.compactMode} onChange={(value) => updateSetting("compactMode", value)} /><Toggle label="Modo para daltonismo" description="Preferencia guardada; la paleta accesible aún no está implementada." checked={profile.settings.colorBlindMode} onChange={(value) => updateSetting("colorBlindMode", value)} /><Toggle label="Mostrar números de filas" checked={profile.settings.showRowNumbers} onChange={(value) => updateSetting("showRowNumbers", value)} /></div>
+                <div className="sm:col-span-2"><Toggle label="Modo compacto" checked={profile.settings.compactMode} onChange={(value) => updateSetting("compactMode", value)} /><Toggle label="Modo para daltonismo" description="Distingue prioridades con formas además del color." checked={profile.settings.colorBlindMode} onChange={(value) => updateSetting("colorBlindMode", value)} /><Toggle label="Mostrar números de filas" checked={profile.settings.showRowNumbers} onChange={(value) => updateSetting("showRowNumbers", value)} /></div>
               </div>}
 
               {tab === "navigation" && <div className="space-y-5">
@@ -395,9 +419,8 @@ export function SettingsModal({
               </div>}
 
               {tab === "experimental" && <div>
-                <Toggle label="Alegría extra / celebraciones" checked={profile.settings.extraCelebrations} onChange={(value) => updateSetting("extraCelebrations", value)} />
-                <Toggle label="Tareas recurrentes" description="Preferencia guardada; la programación recurrente aún no está implementada." checked={profile.settings.recurringTasks} onChange={(value) => updateSetting("recurringTasks", value)} />
-                <Toggle label="Silenciar avisos de entregas de hoy" checked={profile.settings.muteDueToday} onChange={(value) => updateSetting("muteDueToday", value)} />
+                <Toggle label="Silenciar avisos de entregas de hoy" description="Se aplica a las notificaciones de tareas asignadas en el navegador." checked={profile.settings.muteDueToday} onChange={(value) => updateSetting("muteDueToday", value)} />
+                <p className="py-4 text-xs text-slate-500">No hay otras funciones experimentales activas en este espacio.</p>
               </div>}
             </>}
             {error && profile && <p role="alert" className="mt-4 text-xs text-rose-600">{error}</p>}

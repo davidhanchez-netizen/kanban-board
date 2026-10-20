@@ -107,6 +107,59 @@ export const workspaces = pgTable("workspaces", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const workspaceAgents = pgTable(
+  "workspace_agents",
+  {
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    agentKey: text("agent_key").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (agent) => [primaryKey({ columns: [agent.workspaceId, agent.agentKey] })],
+);
+
+export const agentActivity = pgTable("agent_activity", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  agentKey: text("agent_key").notNull(),
+  action: text("action").notNull(),
+  details: text("details").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const strategyGoals = pgTable("strategy_goals", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  current: integer("current").notNull().default(0),
+  target: integer("target").notNull().default(1),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const knowledgeArticles = pgTable("knowledge_articles", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  authorId: text("author_id").references(() => users.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  category: text("category").notNull().default("Procesos"),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const columns = pgTable("board_columns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),

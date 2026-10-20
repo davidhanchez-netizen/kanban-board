@@ -152,8 +152,19 @@ export async function PATCH(request: Request) {
 
     const db = getDb();
     const [existingUser] = await db
-      .select({ name: users.name, image: users.image })
+      .select({
+        name: users.name,
+        image: users.image,
+        pronouns: userPreferences.pronouns,
+        pronunciation: userPreferences.pronunciation,
+        pronunciationAudio: userPreferences.pronunciationAudio,
+        jobTitle: userPreferences.jobTitle,
+        department: userPreferences.department,
+        about: userPreferences.about,
+        outOfOffice: userPreferences.outOfOffice,
+      })
       .from(users)
+      .leftJoin(userPreferences, eq(users.id, userPreferences.userId))
       .where(eq(users.id, user.id))
       .limit(1);
     const userUpdate: Partial<typeof users.$inferInsert> = {};
@@ -187,7 +198,24 @@ export async function PATCH(request: Request) {
 
     const nameChanged = userUpdate.name !== undefined && userUpdate.name !== existingUser?.name;
     const imageChanged = userUpdate.image !== undefined && userUpdate.image !== existingUser?.image;
-    if (nameChanged || imageChanged) {
+    const preferenceFieldsChanged = (
+      [
+        ["pronouns", existingUser?.pronouns],
+        ["pronunciation", existingUser?.pronunciation],
+        ["pronunciationAudio", existingUser?.pronunciationAudio],
+        ["jobTitle", existingUser?.jobTitle],
+        ["department", existingUser?.department],
+        ["about", existingUser?.about],
+      ] as const
+    ).some(([field, previous]) => {
+      const value = values[field];
+      if (typeof value !== "string" && value !== null) return false;
+      return (typeof value === "string" ? value.trim() || null : null) !== previous;
+    });
+    const outOfOfficeChanged =
+      typeof values.outOfOffice === "boolean" &&
+      values.outOfOffice !== (existingUser?.outOfOffice ?? false);
+    if (nameChanged || imageChanged || preferenceFieldsChanged || outOfOfficeChanged) {
       const workspaceIds = await db.select({ id: workspaces.id }).from(workspaces);
       await Promise.all(workspaceIds.map(({ id }) =>
         publishWorkspaceEvent(id, "profile:updated", {

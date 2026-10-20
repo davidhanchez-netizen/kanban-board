@@ -5,10 +5,12 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import Pusher from "pusher-js";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SettingsModal, type SettingsTab } from "@/app/components/SettingsModal";
+import { WorkspaceFeatureViews } from "@/app/components/WorkspaceFeatureViews";
 
 type Priority = "high" | "medium" | "low";
 type Workspace = { id: number; name: string };
-type View = "board" | "list" | "calendar" | "dashboard" | "inbox";
+type View = "board" | "list" | "calendar" | "dashboard" | "inbox" | "agents" | "strategy" | "knowledge" | "people";
+type FeatureView = "agents" | "strategy" | "knowledge" | "people";
 
 type Column = {
   id: number;
@@ -756,7 +758,7 @@ function WorkspaceModal({
 
 function PriorityPill({ priority }: { priority: Priority }) {
   const color = priority === "high" ? "bg-rose-50 text-rose-700 ring-rose-200" : priority === "medium" ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${color}`}><span className="size-1.5 rounded-full bg-current" />{priorityLabels[priority]}</span>;
+  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${color}`}><span className={`size-1.5 rounded-full bg-current priority-${priority}`} />{priorityLabels[priority]}</span>;
 }
 
 function initials(name: string) {
@@ -810,10 +812,22 @@ export default function Home() {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [navigationLabels, setNavigationLabels] = useState<"icons" | "icons-and-text">("icons-and-text");
   const [navigationOrder, setNavigationOrder] = useState(["work", "agents", "strategy", "knowledge", "people"]);
+  const [browserNotifications, setBrowserNotifications] = useState(false);
+  const [projectNotifications, setProjectNotifications] = useState(true);
+  const [doNotDisturb, setDoNotDisturb] = useState(false);
+  const [muteDueToday, setMuteDueToday] = useState(false);
+  const [showRowNumbers, setShowRowNumbers] = useState(false);
+  const tasksRef = useRef(tasks);
+  const notificationSettingsRef = useRef({ browserNotifications, projectNotifications, doNotDisturb, muteDueToday });
   const sidebarProfileMenuRef = useRef<HTMLDivElement>(null);
   const headerProfileMenuRef = useRef<HTMLDivElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const headerCreateMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  useEffect(() => {
+    notificationSettingsRef.current = { browserNotifications, projectNotifications, doNotDisturb, muteDueToday };
+  }, [browserNotifications, projectNotifications, doNotDisturb, muteDueToday]);
 
   const applyBoardData = useCallback((data: Awaited<ReturnType<typeof loadBoardData>>) => {
     setColumns(data.columns);
@@ -848,15 +862,21 @@ export default function Home() {
   useEffect(() => {
     if (status !== "authenticated") return;
     let active = true;
-    request<{ profile: { settings: { navigationLabels: "icons" | "icons-and-text"; navigationOrder: string[]; theme: "system" | "light" | "dark"; themeStyle: "aura" | "cyberpunk" | "forest" | "sunset" | "monochrome"; sidebarColor: "midnight" | "purple" | "space-blue" | "olive" | "pink"; compactMode: boolean } } }>("/api/profile", { cache: "no-store" })
+    request<{ profile: { settings: { navigationLabels: "icons" | "icons-and-text"; navigationOrder: string[]; theme: "system" | "light" | "dark"; themeStyle: "aura" | "cyberpunk" | "forest" | "sunset" | "monochrome"; sidebarColor: "midnight" | "purple" | "space-blue" | "olive" | "pink"; compactMode: boolean; browserNotifications: boolean; projectNotifications: boolean; doNotDisturb: boolean; muteDueToday: boolean; showRowNumbers: boolean; colorBlindMode: boolean } } }>("/api/profile", { cache: "no-store" })
       .then(({ profile }) => {
         if (!active) return;
         setNavigationLabels(profile.settings.navigationLabels);
         setNavigationOrder(profile.settings.navigationOrder);
+        setBrowserNotifications(profile.settings.browserNotifications);
+        setProjectNotifications(profile.settings.projectNotifications);
+        setDoNotDisturb(profile.settings.doNotDisturb);
+        setMuteDueToday(profile.settings.muteDueToday);
+        setShowRowNumbers(profile.settings.showRowNumbers);
         document.documentElement.dataset.theme = profile.settings.theme;
         document.documentElement.dataset.palette = profile.settings.themeStyle;
         document.documentElement.dataset.sidebarColor = profile.settings.sidebarColor;
         document.documentElement.dataset.compact = String(profile.settings.compactMode);
+        document.documentElement.dataset.colorBlind = String(profile.settings.colorBlindMode);
       })
       .catch((cause: unknown) => {
         console.error("Unable to load user navigation preferences:", cause);
@@ -910,6 +930,22 @@ export default function Home() {
           }
           const task = payload.task;
           if (!task || !Number.isSafeInteger(task.id)) return;
+          const previousTask = tasksRef.current.find((item) => item.id === task.id);
+          const notificationSettings = notificationSettingsRef.current;
+          if (
+            task.assigneeId === currentUserId &&
+            !task.completed &&
+            previousTask?.assigneeId !== currentUserId &&
+            notificationSettings.browserNotifications &&
+            notificationSettings.projectNotifications &&
+            !notificationSettings.doNotDisturb &&
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted" &&
+            !(notificationSettings.muteDueToday && task.dueDate === new Date().toISOString().slice(0, 10))
+          ) {
+            new Notification("Tarea asignada", { body: task.title, icon: "/logo.png" });
+          }
           setTasks((current) => {
             const existing = current.find((item) => item.id === task.id);
             const nextTask = { ...task, assigneeName: task.assigneeName ?? task.assignee ?? existing?.assigneeName ?? "Usuario" };
@@ -984,7 +1020,7 @@ export default function Home() {
         client.disconnect();
       }
     };
-  }, [status, workspaceId]);
+  }, [status, workspaceId, currentUserId]);
 
   async function mutate<T>(url: string, init?: RequestInit): Promise<T | null> {
     setSaving(true);
@@ -1016,6 +1052,7 @@ export default function Home() {
   }, [workspaceTasks, search, priorityFilter, columnFilter, mineOnly, currentUserId]);
   const completedCount = workspaceTasks.filter((task) => task.completed).length;
   const hasFilters = priorityFilter !== "all" || columnFilter !== "all";
+  const featureView = view === "agents" || view === "strategy" || view === "knowledge" || view === "people";
 
   async function saveTask(draft: TaskDraft, id?: number) {
     const previousTasks = tasks;
@@ -1155,7 +1192,17 @@ export default function Home() {
     setTaskDialog({ open: true, task });
   }
 
-  const viewNames: Record<View, string> = { board: "Tablero", list: "Lista", calendar: "Calendario", dashboard: "Resumen", inbox: "Bandeja de entrada" };
+  const viewNames: Record<View, string> = {
+    board: "Tablero",
+    list: "Lista",
+    calendar: "Calendario",
+    dashboard: "Resumen",
+    inbox: "Bandeja de entrada",
+    agents: "Agentes",
+    strategy: "Estrategia",
+    knowledge: "Conocimientos",
+    people: "Personas",
+  };
 
   if (status === "loading") {
     return <main className="flex min-h-screen items-center justify-center bg-[#f7f8fc] text-sm text-slate-500">Verificando sesión…</main>;
@@ -1212,7 +1259,8 @@ export default function Home() {
             </div>;
             const labels: Record<string, string> = { agents: "Agentes", strategy: "Estrategia", knowledge: "Conocimientos", people: "Personas" };
             const icons: Record<string, string> = { agents: "✦", strategy: "↗", knowledge: "▤", people: "♙" };
-            return <button key={item} type="button" title={labels[item] ?? item} disabled className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] text-slate-400" aria-label={`${labels[item] ?? item}, próximamente`}><span className="w-[17px] text-center" aria-hidden="true">{icons[item] ?? "·"}</span>{navigationLabels === "icons-and-text" && (labels[item] ?? item)}<span className="sr-only">Próximamente</span></button>;
+            const active = view === item;
+            return <button key={item} type="button" title={labels[item] ?? item} onClick={() => { setView(item as FeatureView); setMineOnly(false); }} aria-current={active ? "page" : undefined} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] ${active ? "bg-indigo-50 font-semibold text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}><span className="w-[17px] text-center" aria-hidden="true">{icons[item] ?? "·"}</span>{navigationLabels === "icons-and-text" && (labels[item] ?? item)}</button>;
           })}
         </nav>
 
@@ -1230,10 +1278,7 @@ export default function Home() {
             <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="mt-1 flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Perfil</button>
             <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Establecer aviso de ausencia</button>
             <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("appearance"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Ajustes</button>
-            {isAdmin && <button type="button" disabled title="Consola administrativa no implementada" className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-400">Consola del administrador</button>}
             <button type="button" onClick={() => { setUserMenuOpen(false); setWorkspaceDialogOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Nuevo espacio de trabajo</button>
-            <button type="button" disabled title="Invitaciones por correo no están configuradas" className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-400">Invitar usuarios</button>
-            <button type="button" disabled title="Solo se admite una cuenta de Google por sesión" className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-400">Agregar otra cuenta</button>
             <button type="button" onClick={() => void signOut({ redirectTo: "/" })} className="mt-1 w-full rounded-md border-t border-slate-100 px-2 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">Cerrar sesión</button>
           </div>}
         </div>
@@ -1248,9 +1293,10 @@ export default function Home() {
               {workspaceId && <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[10px] font-medium sm:inline-flex ${realtimeStatus === "connected" ? "bg-emerald-50 text-emerald-700" : realtimeStatus === "connecting" ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"}`}>{realtimeStatus === "connected" ? "En tiempo real" : realtimeStatus === "connecting" ? "Conectando…" : "Tiempo real no disponible"}</span>}
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-              <select aria-label="Navegación" value={view} onChange={(event) => setView(event.target.value as View)} className="max-w-32 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700 sm:hidden">
-                <option value="dashboard">Inicio</option><option value="inbox">Bandeja</option><option value="board">Tablero</option><option value="list">Lista</option><option value="calendar">Calendario</option>
+              <select aria-label="Navegación" value={view} onChange={(event) => { setView(event.target.value as View); setMineOnly(false); }} className="max-w-32 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700 sm:hidden">
+                <option value="dashboard">Inicio</option><option value="inbox">Bandeja</option><option value="board">Tablero</option><option value="list">Lista</option><option value="calendar">Calendario</option><option value="agents">Agentes</option><option value="strategy">Estrategia</option><option value="knowledge">Conocimientos</option><option value="people">Personas</option>
               </select>
+              {!featureView && <>
               <button type="button" aria-label="Alternar mis tareas" onClick={() => setMineOnly(!mineOnly)} className={`rounded-lg p-2 sm:hidden ${mineOnly ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-100"}`}><Icon name="inbox" size={17} /></button>
               <div className="relative hidden w-[min(34vw,280px)] sm:block"><Icon name="search" size={16} /><input aria-label="Buscar tareas" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar tareas..." className="search-control" /><kbd className="absolute right-3 top-2.5 rounded border border-slate-200 px-1.5 py-0.5 text-[9px] text-slate-400">⌘ K</kbd></div>
               <div className="relative">
@@ -1261,6 +1307,7 @@ export default function Home() {
                   <div className="mt-3"><Field label="Estado / columna"><select value={columnFilter} onChange={(event) => setColumnFilter(event.target.value === "all" ? "all" : Number(event.target.value))} className="form-control"><option value="all">Todas las columnas</option>{activeColumns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></Field></div>
                 </div>}
               </div>
+              </>}
               <div className="relative" ref={headerProfileMenuRef}>
                 <button type="button" aria-label="Abrir menú de usuario" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)} className="rounded-full ring-offset-2 hover:ring-2 hover:ring-indigo-200"><UserAvatar image={session.user.image ?? null} name={displayName} /></button>
                 {userMenuOpen && <div className="absolute right-0 top-12 z-40 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
@@ -1268,10 +1315,7 @@ export default function Home() {
                   <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="mt-1 flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Perfil</button>
                   <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Establecer aviso de ausencia</button>
                   <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("appearance"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Ajustes</button>
-                  {isAdmin && <button type="button" disabled title="Consola administrativa no implementada" className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-400">Consola del administrador</button>}
                   <button type="button" onClick={() => { setUserMenuOpen(false); setWorkspaceDialogOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Nuevo espacio de trabajo</button>
-                  <button type="button" disabled title="Las invitaciones no están configuradas" className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-400">Invitar usuarios</button>
-                  <button type="button" disabled title="Solo se admite una cuenta de Google por sesión" className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-400">Agregar otra cuenta</button>
                   <button type="button" onClick={() => void signOut({ redirectTo: "/" })} className="mt-1 w-full rounded-md border-t border-slate-100 px-2 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">Cerrar sesión</button>
                 </div>}
               </div>
@@ -1289,21 +1333,22 @@ export default function Home() {
 
         <div className="mx-auto max-w-[1600px] px-5 pb-12 pt-7 sm:px-8">
           <div className="mb-6 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
-            <div><div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-slate-400"><span>{view === "inbox" ? "Bandeja de entrada" : "Trabajo"}</span><span>/</span><span className="text-indigo-600">{workspaceName}</span></div><h2 className="text-[26px] font-bold tracking-[-.04em] text-slate-900 sm:text-[30px]">{view === "dashboard" ? "Panel de resumen" : view === "inbox" ? "Bandeja de entrada" : "Hola, aquí está tu trabajo."}</h2><p className="mt-1 text-sm text-slate-500">{view === "dashboard" ? `Un vistazo al progreso de ${workspaceName}.` : view === "inbox" ? "Tareas asignadas a ti en este espacio." : "Organiza tus prioridades y mantén el ritmo del equipo."}</p></div>
-            <div className="flex flex-wrap items-center gap-3">
+            {!featureView && <div><div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-slate-400"><span>{view === "inbox" ? "Bandeja de entrada" : "Trabajo"}</span><span>/</span><span className="text-indigo-600">{workspaceName}</span></div><h2 className="text-[26px] font-bold tracking-[-.04em] text-slate-900 sm:text-[30px]">{view === "dashboard" ? "Panel de resumen" : view === "inbox" ? "Bandeja de entrada" : "Hola, aquí está tu trabajo."}</h2><p className="mt-1 text-sm text-slate-500">{view === "dashboard" ? `Un vistazo al progreso de ${workspaceName}.` : view === "inbox" ? "Tareas asignadas a ti en este espacio." : "Organiza tus prioridades y mantén el ritmo del equipo."}</p></div>}
+            {!featureView && <div className="flex flex-wrap items-center gap-3">
               <div className="flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
                 {(["board", "list", "calendar", "dashboard"] as View[]).map((item) => <button key={item} type="button" aria-label={`Vista ${viewNames[item]}`} onClick={() => setView(item)} className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold transition ${view === item ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}><Icon name={item === "board" ? "board" : item === "list" ? "list" : item === "calendar" ? "calendar" : "chart"} size={15} /><span className="hidden sm:inline">{viewNames[item]}</span></button>)}
               </div>
-              <button type="button" onClick={() => setColumnDialog({ open: true, column: null })} className="button-secondary"><Icon name="plus" size={16} />Añadir columna</button>
-            </div>
+              {view !== "inbox" && <button type="button" onClick={() => setColumnDialog({ open: true, column: null })} className="button-secondary"><Icon name="plus" size={16} />Añadir columna</button>}
+            </div>}
           </div>
 
-          <div className="mb-5 flex gap-2 sm:hidden"><div className="relative flex-1"><Icon name="search" size={16} /><input aria-label="Buscar tareas" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar tareas..." className="search-control" /></div></div>
+          {!featureView && <div className="mb-5 flex gap-2 sm:hidden"><div className="relative flex-1"><Icon name="search" size={16} /><input aria-label="Buscar tareas" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar tareas..." className="search-control" /></div></div>}
 
           {mineOnly && <div className="mb-4 flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-700"><Icon name="inbox" size={15} />Mostrando solo tus tareas<button type="button" onClick={() => setMineOnly(false)} className="ml-auto underline underline-offset-2">Ver todas</button></div>}
           {error && <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"><span className="font-bold">!</span><p className="flex-1">{error}</p><button type="button" aria-label="Descartar aviso" onClick={() => setError("")}><Icon name="close" size={16} /></button></div>}
 
-          {loading ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className="h-56 animate-pulse rounded-xl border border-slate-200 bg-white p-4"><div className="h-3 w-24 rounded bg-slate-100" /><div className="mt-6 h-20 rounded-lg bg-slate-50" /><div className="mt-3 h-20 rounded-lg bg-slate-50" /></div>)}</div> :
+          {loading && !featureView ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className="h-56 animate-pulse rounded-xl border border-slate-200 bg-white p-4"><div className="h-3 w-24 rounded bg-slate-100" /><div className="mt-6 h-20 rounded-lg bg-slate-50" /><div className="mt-3 h-20 rounded-lg bg-slate-50" /></div>)}</div> :
+            featureView ? <WorkspaceFeatureViews key={`${workspaceId ?? "none"}-${view}`} view={view} workspaceId={workspaceId} workspaceName={workspaceName} tasks={workspaceTasks} columns={activeColumns} pusherClient={pusherClient} /> :
             view === "dashboard" ? (
               <section className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-3">
@@ -1346,8 +1391,8 @@ export default function Home() {
               </div>
             ) : view === "list" ? (
               <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/30">
-                <div className="overflow-x-auto"><table className="w-full min-w-[720px] border-collapse text-left"><thead><tr className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400"><th className="px-5 py-3">Tarea</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3">Prioridad</th><th className="px-4 py-3">Asignada a</th><th className="px-4 py-3">Fecha</th><th className="px-4 py-3 text-right">Acción</th></tr></thead><tbody>
-                  {visibleTasks.map((task) => <tr key={task.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70"><td className="max-w-[340px] px-5 py-3.5"><button type="button" onClick={() => showTask(task)} className={`block truncate text-left text-sm font-semibold hover:text-indigo-700 ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</button>{task.description && <p className="mt-1 truncate text-xs text-slate-400">{task.description}</p>}</td><td className="px-4 py-3.5"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin estado"}</span></td><td className="px-4 py-3.5"><PriorityPill priority={task.priority} /></td><td className="px-4 py-3.5"><span className="flex items-center gap-2 text-xs text-slate-600"><span className="flex size-6 items-center justify-center rounded-full bg-indigo-50 text-[9px] font-bold text-indigo-600">{initials(task.assigneeName)}</span>{task.assigneeName}</span></td><td className="px-4 py-3.5 text-xs text-slate-500">{new Date(task.dueDate ?? task.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</td><td className="px-4 py-3.5 text-right"><button type="button" aria-label={task.completed ? "Marcar como pendiente" : "Marcar como completada"} onClick={() => void toggleTaskCompletion(task)} className={`rounded-lg p-2 ${task.completed ? "text-emerald-600 hover:bg-emerald-50" : "text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"}`}><Icon name="check" size={17} /></button></td></tr>)}
+                <div className="overflow-x-auto"><table className="w-full min-w-[720px] border-collapse text-left"><thead><tr className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">{showRowNumbers && <th className="px-3 py-3 text-right">#</th>}<th className="px-5 py-3">Tarea</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3">Prioridad</th><th className="px-4 py-3">Asignada a</th><th className="px-4 py-3">Fecha</th><th className="px-4 py-3 text-right">Acción</th></tr></thead><tbody>
+                  {visibleTasks.map((task, index) => <tr key={task.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">{showRowNumbers && <td className="px-3 py-3.5 text-right text-xs text-slate-400">{index + 1}</td>}<td className="max-w-[340px] px-5 py-3.5"><button type="button" onClick={() => showTask(task)} className={`block truncate text-left text-sm font-semibold hover:text-indigo-700 ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</button>{task.description && <p className="mt-1 truncate text-xs text-slate-400">{task.description}</p>}</td><td className="px-4 py-3.5"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin estado"}</span></td><td className="px-4 py-3.5"><PriorityPill priority={task.priority} /></td><td className="px-4 py-3.5"><span className="flex items-center gap-2 text-xs text-slate-600"><span className="flex size-6 items-center justify-center rounded-full bg-indigo-50 text-[9px] font-bold text-indigo-600">{initials(task.assigneeName)}</span>{task.assigneeName}</span></td><td className="px-4 py-3.5 text-xs text-slate-500">{new Date(task.dueDate ?? task.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</td><td className="px-4 py-3.5 text-right"><button type="button" aria-label={task.completed ? "Marcar como pendiente" : "Marcar como completada"} onClick={() => void toggleTaskCompletion(task)} className={`rounded-lg p-2 ${task.completed ? "text-emerald-600 hover:bg-emerald-50" : "text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"}`}><Icon name="check" size={17} /></button></td></tr>)}
                   </tbody></table></div>
                 {visibleTasks.length === 0 && <div className="p-8"><EmptyState title="No hay tareas para mostrar" body="Prueba con otros filtros o crea una tarea nueva." onAction={() => setTaskDialog({ open: true, task: null })} action="Nueva tarea" /></div>}
               </div>
@@ -1371,6 +1416,11 @@ export default function Home() {
       {settingsOpen && <SettingsModal workspaces={workspaces} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} onProfileUpdated={(profile) => {
         setNavigationLabels(profile.settings.navigationLabels);
         setNavigationOrder(profile.settings.navigationOrder);
+        setBrowserNotifications(profile.settings.browserNotifications);
+        setProjectNotifications(profile.settings.projectNotifications);
+        setDoNotDisturb(profile.settings.doNotDisturb);
+        setMuteDueToday(profile.settings.muteDueToday);
+        setShowRowNumbers(profile.settings.showRowNumbers);
         setUsers((current) => current.map((member) => member.id === profile.id
           ? { ...member, name: profile.name, image: profile.image }
           : member));
