@@ -841,6 +841,18 @@ export default function Home() {
     });
   }, []);
 
+  function selectWorkspace(id: number) {
+    if (id === workspaceId) return;
+    setWorkspaceId(id);
+    setView("board");
+    setMineOnly(false);
+    setColumnFilter("all");
+    setPriorityFilter("all");
+    setSearch("");
+    setFilterOpen(false);
+    setColumnMenu(null);
+  }
+
   useEffect(() => {
     if (status !== "authenticated") return;
     let active = true;
@@ -1253,7 +1265,7 @@ export default function Home() {
                 <span>{navigationLabels === "icons" ? "Espacios" : "Proyectos y espacios"}</span>
                 <button type="button" aria-label="Crear espacio de trabajo" onClick={() => setWorkspaceDialogOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-indigo-700"><Icon name="plus" size={15} /></button>
               </div>
-              <div className="space-y-1">{workspaces.map((workspace) => <button key={workspace.id} type="button" title={workspace.name} onClick={() => { setWorkspaceId(workspace.id); setMineOnly(false); setColumnFilter("all"); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${workspaceId === workspace.id ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}>{workspace.name === "Under Control" ? <Image src="/logo.png" alt="" width={24} height={24} className="size-6 shrink-0 object-contain" /> : <Icon name="briefcase" size={16} />}{navigationLabels === "icons-and-text" && <span className="min-w-0 flex-1 truncate">{workspace.name}</span>}<span className="ml-auto text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === workspace.id).length}</span></button>)}
+              <div className="space-y-1">{workspaces.map((workspace) => <button key={workspace.id} type="button" title={workspace.name} aria-current={workspaceId === workspace.id ? "true" : undefined} onClick={() => selectWorkspace(workspace.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${workspaceId === workspace.id ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}>{workspace.name === "Under Control" ? <Image src="/logo.png" alt="" width={24} height={24} className="size-6 shrink-0 object-contain" /> : <Icon name="briefcase" size={16} />}{navigationLabels === "icons-and-text" && <span className="min-w-0 flex-1 truncate">{workspace.name}</span>}<span className="ml-auto text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === workspace.id).length}</span></button>)}
                 {!workspaces.length && !loading && <p className="px-3 py-2 text-xs text-slate-400">Aún no hay espacios.</p>}
               </div>
             </div>;
@@ -1289,7 +1301,7 @@ export default function Home() {
           <div className="mx-auto flex h-[68px] max-w-[1600px] items-center justify-between gap-4 px-5 sm:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <Image src="/logo.png" alt="Under Control" width={32} height={32} className="size-8 shrink-0 object-contain" />
-              <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="hidden truncate text-[15px] font-bold text-slate-900 lg:block">{workspaceName}</h1><span className="hidden lg:block"><Icon name="chevron" size={14} /></span><select aria-label="Espacio de trabajo" value={workspaceId ?? ""} onChange={(event) => { setWorkspaceId(Number(event.target.value)); setMineOnly(false); setColumnFilter("all"); }} className="max-w-36 rounded-md border-0 bg-transparent p-0 text-[14px] font-bold text-slate-900 outline-none lg:hidden">{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><p className="mt-0.5 hidden text-[11px] text-slate-400 sm:block">Trabajo / {workspaceName}</p></div></div>
+              <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="hidden truncate text-[15px] font-bold text-slate-900 lg:block">{workspaceName}</h1><span className="hidden lg:block"><Icon name="chevron" size={14} /></span><select aria-label="Espacio de trabajo" value={workspaceId ?? ""} onChange={(event) => selectWorkspace(Number(event.target.value))} className="max-w-36 rounded-md border-0 bg-transparent p-0 text-[14px] font-bold text-slate-900 outline-none lg:hidden">{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><p className="mt-0.5 hidden text-[11px] text-slate-400 sm:block">Trabajo / {workspaceName}</p></div></div>
               {workspaceId && <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[10px] font-medium sm:inline-flex ${realtimeStatus === "connected" ? "bg-emerald-50 text-emerald-700" : realtimeStatus === "connecting" ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"}`}>{realtimeStatus === "connected" ? "En tiempo real" : realtimeStatus === "connecting" ? "Conectando…" : "Tiempo real no disponible"}</span>}
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
