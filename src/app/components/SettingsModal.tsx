@@ -283,7 +283,10 @@ export function SettingsModal({
       <section role="dialog" aria-modal="true" aria-labelledby="settings-title" className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:flex-row">
         <aside className="w-full shrink-0 border-b border-slate-200 bg-slate-50 p-4 sm:w-56 sm:border-r sm:border-b-0 sm:p-5">
           <div className="mb-4 flex items-center justify-between sm:mb-8">
-            <h2 id="settings-title" className="text-base font-bold text-slate-900">Ajustes</h2>
+            <div className="flex items-center gap-2">
+              <Image src="/logo.png" alt="Under Control" width={28} height={28} className="size-7 shrink-0 object-contain" />
+              <h2 id="settings-title" className="text-base font-bold text-slate-900">Ajustes</h2>
+            </div>
             <button type="button" onClick={onClose} aria-label="Cerrar ajustes" className="rounded-md p-1 text-slate-500 hover:bg-slate-200 sm:hidden">×</button>
           </div>
           <nav aria-label="Secciones de ajustes" className="flex gap-1 overflow-x-auto sm:block sm:space-y-1">

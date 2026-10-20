@@ -1165,7 +1165,7 @@ export default function Home() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f8fc] px-5 py-10">
         <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-lg shadow-slate-200/50">
-          <span className="mx-auto flex size-12 items-center justify-center rounded-xl bg-indigo-600 text-white"><Icon name="spark" size={22} /></span>
+          <Image src="/logo.png" alt="Under Control" width={48} height={48} className="mx-auto size-12 object-contain" />
           <h1 className="mt-5 text-xl font-bold tracking-tight text-slate-900">Under Control Workspace</h1>
           <p className="mt-2 text-sm leading-6 text-slate-500">Inicia sesión para ver el espacio de trabajo y las tareas del equipo.</p>
           <div className="mt-6 grid gap-3">
@@ -1180,7 +1180,7 @@ export default function Home() {
     <div className="kanban-app min-h-screen bg-[#f7f8fc] text-slate-800">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[252px] flex-col border-r border-slate-200/80 bg-white px-4 py-5 lg:flex">
         <a href="#" className="mb-9 flex items-center gap-3 px-2">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-200"><Icon name="spark" size={20} /></span>
+          <Image src="/logo.png" alt="Under Control" width={36} height={36} className="size-9 shrink-0 object-contain" />
           <span><span className="block text-[15px] font-bold tracking-tight text-slate-900">Under Control</span><span className="text-[11px] font-medium text-slate-400">WORKSPACE</span></span>
         </a>
 
@@ -1206,7 +1206,7 @@ export default function Home() {
                 <span>{navigationLabels === "icons" ? "Espacios" : "Proyectos y espacios"}</span>
                 <button type="button" aria-label="Crear espacio de trabajo" onClick={() => setWorkspaceDialogOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-indigo-700"><Icon name="plus" size={15} /></button>
               </div>
-              <div className="space-y-1">{workspaces.map((workspace) => <button key={workspace.id} type="button" title={workspace.name} onClick={() => { setWorkspaceId(workspace.id); setMineOnly(false); setColumnFilter("all"); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${workspaceId === workspace.id ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}><Icon name="briefcase" size={16} />{navigationLabels === "icons-and-text" && <span className="min-w-0 flex-1 truncate">{workspace.name}</span>}<span className="ml-auto text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === workspace.id).length}</span></button>)}
+              <div className="space-y-1">{workspaces.map((workspace) => <button key={workspace.id} type="button" title={workspace.name} onClick={() => { setWorkspaceId(workspace.id); setMineOnly(false); setColumnFilter("all"); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${workspaceId === workspace.id ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}>{workspace.name === "Under Control" ? <Image src="/logo.png" alt="" width={24} height={24} className="size-6 shrink-0 object-contain" /> : <Icon name="briefcase" size={16} />}{navigationLabels === "icons-and-text" && <span className="min-w-0 flex-1 truncate">{workspace.name}</span>}<span className="ml-auto text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === workspace.id).length}</span></button>)}
                 {!workspaces.length && !loading && <p className="px-3 py-2 text-xs text-slate-400">Aún no hay espacios.</p>}
               </div>
             </div>;
@@ -1243,7 +1243,7 @@ export default function Home() {
         <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
           <div className="mx-auto flex h-[68px] max-w-[1600px] items-center justify-between gap-4 px-5 sm:px-8">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="size-2.5 rounded-full bg-violet-500 lg:hidden" />
+              <Image src="/logo.png" alt="Under Control" width={32} height={32} className="size-8 shrink-0 object-contain" />
               <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="hidden truncate text-[15px] font-bold text-slate-900 lg:block">{workspaceName}</h1><span className="hidden lg:block"><Icon name="chevron" size={14} /></span><select aria-label="Espacio de trabajo" value={workspaceId ?? ""} onChange={(event) => { setWorkspaceId(Number(event.target.value)); setMineOnly(false); setColumnFilter("all"); }} className="max-w-36 rounded-md border-0 bg-transparent p-0 text-[14px] font-bold text-slate-900 outline-none lg:hidden">{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><p className="mt-0.5 hidden text-[11px] text-slate-400 sm:block">Trabajo / {workspaceName}</p></div></div>
               {workspaceId && <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[10px] font-medium sm:inline-flex ${realtimeStatus === "connected" ? "bg-emerald-50 text-emerald-700" : realtimeStatus === "connecting" ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"}`}>{realtimeStatus === "connected" ? "En tiempo real" : realtimeStatus === "connecting" ? "Conectando…" : "Tiempo real no disponible"}</span>}
             </div>
