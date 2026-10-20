@@ -8,7 +8,13 @@ import { SettingsModal, type SettingsTab } from "@/app/components/SettingsModal"
 import { WorkspaceFeatureViews } from "@/app/components/WorkspaceFeatureViews";
 
 type Priority = "high" | "medium" | "low";
-type Workspace = { id: number; name: string };
+type Workspace = {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+};
 type View = "board" | "list" | "calendar" | "dashboard" | "inbox" | "agents" | "strategy" | "knowledge" | "people";
 type FeatureView = "agents" | "strategy" | "knowledge" | "people";
 
@@ -732,24 +738,43 @@ function ColumnModal({
 }
 
 function WorkspaceModal({
+  workspace,
   saving,
   onClose,
   onSave,
 }: {
+  workspace?: Workspace | null;
   saving: boolean;
   onClose: () => void;
-  onSave: (name: string) => Promise<void>;
+  onSave: (values: Pick<Workspace, "name" | "description" | "icon" | "color">) => Promise<void>;
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(workspace?.name ?? "");
+  const [description, setDescription] = useState(workspace?.description ?? "");
+  const [icon, setIcon] = useState(workspace?.icon ?? "briefcase");
+  const [color, setColor] = useState(workspace?.color ?? "#4f46e5");
   return (
-    <Modal title="Crear espacio de trabajo" subtitle="El nuevo espacio quedará disponible para todo el equipo." onClose={onClose}>
-      <form onSubmit={async (event) => { event.preventDefault(); await onSave(name.trim()); }} className="space-y-5">
+    <Modal title={workspace ? "Editar espacio de trabajo" : "Crear espacio de trabajo"} subtitle={workspace ? "Actualiza el nombre y la apariencia del espacio." : "El nuevo espacio quedará disponible para todo el equipo."} onClose={onClose} wide>
+      <form onSubmit={async (event) => { event.preventDefault(); await onSave({ name: name.trim(), description: description.trim(), icon: icon.trim(), color }); }} className="space-y-4">
         <Field label="Nombre del espacio">
           <input autoFocus required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="Ej. Under Control" className="form-control" />
         </Field>
+        <Field label="Descripción">
+          <textarea maxLength={500} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe este proyecto o espacio de trabajo." className="form-control resize-y" />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Icono o emoji">
+            <input required maxLength={8} value={icon} onChange={(event) => setIcon(event.target.value)} placeholder="📁" className="form-control" />
+          </Field>
+          <Field label="Color del espacio">
+            <div className="flex h-[38px] items-center gap-3 rounded-lg border border-slate-200 px-3">
+              <input type="color" aria-label="Color del espacio" value={color} onChange={(event) => setColor(event.target.value)} className="size-7 cursor-pointer border-0 bg-transparent p-0" />
+              <span className="text-xs font-medium uppercase text-slate-600">{color}</span>
+            </div>
+          </Field>
+        </div>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="button-secondary">Cancelar</button>
-          <button type="submit" disabled={saving || !name.trim()} className="button-primary">{saving ? "Creando..." : "Crear espacio"}</button>
+          <button type="submit" disabled={saving || !name.trim() || !icon.trim()} className="button-primary">{saving ? "Guardando..." : workspace ? "Guardar cambios" : "Crear espacio"}</button>
         </div>
       </form>
     </Modal>
@@ -803,6 +828,9 @@ export default function Home() {
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: Task | null }>({ open: false, task: null });
   const [columnDialog, setColumnDialog] = useState<{ open: boolean; column: Column | null }>({ open: false, column: null });
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
+  const [workspaceEdit, setWorkspaceEdit] = useState<Workspace | null>(null);
+  const [workspaceDelete, setWorkspaceDelete] = useState<Workspace | null>(null);
+  const [workspaceMenuId, setWorkspaceMenuId] = useState<number | null>(null);
   const [columnMenu, setColumnMenu] = useState<number | null>(null);
   const [pusherClient, setPusherClient] = useState<Pusher | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "connected" | "unavailable">("connecting");
@@ -907,6 +935,9 @@ export default function Home() {
         !createMenuRef.current?.contains(event.target) &&
         !headerCreateMenuRef.current?.contains(event.target)
       ) setCreateMenuOpen(false);
+      if (!(event.target instanceof Element) || !event.target.closest("[data-workspace-menu]")) {
+        setWorkspaceMenuId(null);
+      }
     }
     document.addEventListener("mousedown", closeMenus);
     return () => document.removeEventListener("mousedown", closeMenus);
@@ -1017,6 +1048,27 @@ export default function Home() {
           }
         };
         channel.bind("profile:updated", updateMemberProfile);
+        const refreshWorkspaceList = () => {
+          request<{ workspaces: Workspace[] }>("/api/workspaces", { cache: "no-store" })
+            .then(({ workspaces: updatedWorkspaces }) => {
+              if (!active) return;
+              setWorkspaces(updatedWorkspaces);
+              if (!updatedWorkspaces.some((workspace) => workspace.id === workspaceId)) {
+                const nextWorkspace = updatedWorkspaces[0] ?? null;
+                setWorkspaceId(nextWorkspace?.id ?? null);
+                setView(nextWorkspace ? "board" : "dashboard");
+                setMineOnly(false);
+                setSearch("");
+                setColumnFilter("all");
+                setPriorityFilter("all");
+                setColumnMenu(null);
+              }
+            })
+            .catch((cause: unknown) => {
+              if (active) setError(cause instanceof Error ? cause.message : "No se pudo actualizar la lista de espacios.");
+            });
+        };
+        channel.bind("workspace:updated", refreshWorkspaceList);
         setPusherClient(client);
       })
       .catch((cause: unknown) => {
@@ -1142,17 +1194,18 @@ export default function Home() {
     } else setColumns(previousColumns);
   }
 
-  async function createWorkspace(name: string) {
+  async function createWorkspace(values: Pick<Workspace, "name" | "description" | "icon" | "color">) {
     setSaving(true);
     setError("");
     const optimisticId = -Date.now();
-    const optimisticWorkspace = { id: optimisticId, name };
+    const optimisticWorkspace = { id: optimisticId, ...values };
     setWorkspaces((current) => [...current, optimisticWorkspace]);
     setWorkspaceId(optimisticId);
+    setView("board");
     try {
       const result = await request<{ workspace: Workspace }>("/api/workspaces", {
         method: "POST",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify(values),
       });
       setWorkspaces((current) => current.map((item) => item.id === optimisticId ? result.workspace : item));
       setWorkspaceId(result.workspace.id);
@@ -1161,6 +1214,57 @@ export default function Home() {
       setWorkspaces((current) => current.filter((item) => item.id !== optimisticId));
       setWorkspaceId((current) => current === optimisticId ? activeWorkspace?.id ?? null : current);
       setError(cause instanceof Error ? cause.message : "No se pudo crear el espacio de trabajo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateWorkspace(values: Pick<Workspace, "name" | "description" | "icon" | "color">) {
+    if (!workspaceEdit) return;
+    const workspace = workspaceEdit;
+    const previousWorkspaces = workspaces;
+    const updatedWorkspace = { ...workspace, ...values };
+    setWorkspaces((current) => current.map((item) => item.id === workspace.id ? updatedWorkspace : item));
+    setSaving(true);
+    setError("");
+    try {
+      const result = await request<{ workspace: Workspace }>(`/api/workspaces/${workspace.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(values),
+      });
+      setWorkspaces((current) => current.map((item) => item.id === result.workspace.id ? result.workspace : item));
+      setWorkspaceEdit(null);
+      setWorkspaceMenuId(null);
+    } catch (cause) {
+      setWorkspaces(previousWorkspaces);
+      setError(cause instanceof Error ? cause.message : "No se pudo actualizar el espacio.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeWorkspace(workspace: Workspace) {
+    const previousWorkspaces = workspaces;
+    setWorkspaces((current) => current.filter((item) => item.id !== workspace.id));
+    setWorkspaceDelete(null);
+    setWorkspaceMenuId(null);
+    setSaving(true);
+    setError("");
+    try {
+      await request<{ success: boolean }>(`/api/workspaces/${workspace.id}`, { method: "DELETE" });
+      if (workspaceId === workspace.id) {
+        const nextWorkspace = previousWorkspaces.find((item) => item.id !== workspace.id) ?? null;
+        setWorkspaceId(nextWorkspace?.id ?? null);
+        setView(nextWorkspace ? "board" : "dashboard");
+        setMineOnly(false);
+        setSearch("");
+        setColumnFilter("all");
+        setPriorityFilter("all");
+        setColumnMenu(null);
+      }
+    } catch (cause) {
+      setWorkspaces(previousWorkspaces);
+      setError(cause instanceof Error ? cause.message : "No se pudo eliminar el espacio.");
     } finally {
       setSaving(false);
     }
@@ -1265,7 +1369,59 @@ export default function Home() {
                 <span>{navigationLabels === "icons" ? "Espacios" : "Proyectos y espacios"}</span>
                 <button type="button" aria-label="Crear espacio de trabajo" onClick={() => setWorkspaceDialogOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-indigo-700"><Icon name="plus" size={15} /></button>
               </div>
-              <div className="space-y-1">{workspaces.map((workspace) => <button key={workspace.id} type="button" title={workspace.name} aria-current={workspaceId === workspace.id ? "true" : undefined} onClick={() => selectWorkspace(workspace.id)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${workspaceId === workspace.id ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}>{workspace.name === "Under Control" ? <Image src="/logo.png" alt="" width={24} height={24} className="size-6 shrink-0 object-contain" /> : <Icon name="briefcase" size={16} />}{navigationLabels === "icons-and-text" && <span className="min-w-0 flex-1 truncate">{workspace.name}</span>}<span className="ml-auto text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === workspace.id).length}</span></button>)}
+              <div className="space-y-1">
+                {workspaces.map((workspace) => {
+                  const selected = workspaceId === workspace.id;
+                  const menuOpen = workspaceMenuId === workspace.id;
+                  return (
+                    <div key={workspace.id} data-workspace-menu className="group/workspace relative flex items-center">
+                      <button
+                        type="button"
+                        title={workspace.description || workspace.name}
+                        aria-current={selected ? "true" : undefined}
+                        onClick={() => selectWorkspace(workspace.id)}
+                        className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 pr-1 text-left text-[13px] font-medium transition ${selected ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}
+                      >
+                        {workspace.name === "Under Control"
+                          ? <Image src="/logo.png" alt="" width={24} height={24} className="size-6 shrink-0 object-contain" />
+                          : <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-md text-sm" style={{ backgroundColor: `${workspace.color}20`, color: workspace.color }}>
+                            {workspace.icon === "briefcase" ? <Icon name="briefcase" size={16} /> : workspace.icon}
+                          </span>}
+                        {navigationLabels === "icons-and-text" && <span className="min-w-0 flex-1 truncate">{workspace.name}</span>}
+                        <span className="ml-auto text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === workspace.id).length}</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Opciones de ${workspace.name}`}
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setWorkspaceMenuId((current) => current === workspace.id ? null : workspace.id);
+                        }}
+                        className={`absolute right-1 z-10 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900 ${selected || menuOpen ? "opacity-100" : "opacity-0 group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100"}`}
+                      >
+                        <Icon name="more" size={16} />
+                      </button>
+                      {menuOpen && <div role="menu" className="absolute right-1 top-11 z-40 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+                        <button type="button" role="menuitem" onClick={(event) => {
+                          event.stopPropagation();
+                          setWorkspaceEdit(workspace);
+                          setWorkspaceMenuId(null);
+                        }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">
+                          <Icon name="edit" size={14} />Editar espacio
+                        </button>
+                        <button type="button" role="menuitem" onClick={(event) => {
+                          event.stopPropagation();
+                          setWorkspaceDelete(workspace);
+                          setWorkspaceMenuId(null);
+                        }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-rose-600 hover:bg-rose-50">
+                          <Icon name="trash" size={14} />Eliminar espacio
+                        </button>
+                      </div>}
+                    </div>
+                  );
+                })}
                 {!workspaces.length && !loading && <p className="px-3 py-2 text-xs text-slate-400">Aún no hay espacios.</p>}
               </div>
             </div>;
@@ -1425,6 +1581,15 @@ export default function Home() {
       {taskDialog.open && <TaskModal key={taskDialog.task?.id ?? "new-task"} task={taskDialog.task} columns={activeColumns} users={users} isAdmin={isAdmin} commentAuthor={displayName} commentAuthorImage={session.user.image ?? null} mentionUsers={mentionUsers} workspaceId={workspaceId} pusherClient={pusherClient} saving={saving} onClose={() => setTaskDialog({ open: false, task: null })} onSave={saveTask} onDelete={isAdmin ? deleteTask : undefined} />}
       {columnDialog.open && <ColumnModal key={columnDialog.column?.id ?? "new-column"} column={columnDialog.column} workspaceName={workspaceName} saving={saving} onClose={() => setColumnDialog({ open: false, column: null })} onSave={saveColumn} />}
       {workspaceDialogOpen && <WorkspaceModal saving={saving} onClose={() => setWorkspaceDialogOpen(false)} onSave={createWorkspace} />}
+      {workspaceEdit && <WorkspaceModal workspace={workspaceEdit} saving={saving} onClose={() => setWorkspaceEdit(null)} onSave={updateWorkspace} />}
+      {workspaceDelete && <Modal title="Eliminar espacio de trabajo" subtitle={`¿Seguro que quieres eliminar “${workspaceDelete.name}”? Solo se pueden eliminar espacios sin tareas.`} onClose={() => setWorkspaceDelete(null)}>
+        <div className="flex justify-end gap-2">
+          <button type="button" disabled={saving} onClick={() => setWorkspaceDelete(null)} className="button-secondary">Cancelar</button>
+          <button type="button" disabled={saving} onClick={() => void removeWorkspace(workspaceDelete)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
+            <Icon name="trash" size={14} />{saving ? "Eliminando..." : "Eliminar espacio"}
+          </button>
+        </div>
+      </Modal>}
       {settingsOpen && <SettingsModal workspaces={workspaces} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} onProfileUpdated={(profile) => {
         setNavigationLabels(profile.settings.navigationLabels);
         setNavigationOrder(profile.settings.navigationOrder);

@@ -103,6 +103,9 @@ export const verificationTokens = pgTable(
 export const workspaces = pgTable("workspaces", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
+  description: text("description").notNull().default(""),
+  icon: text("icon").notNull().default("briefcase"),
+  color: text("color").notNull().default("#4f46e5"),
   createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
