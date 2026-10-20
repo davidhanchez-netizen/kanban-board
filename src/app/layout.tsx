@@ -15,9 +15,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Under Control Workspace",
-  description: "Organiza el trabajo de tu equipo en un solo lugar.",
+  description: "Kanban Board System",
   icons: {
     icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
   },
 };
 
