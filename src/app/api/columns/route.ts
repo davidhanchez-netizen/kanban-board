@@ -1,9 +1,8 @@
 import { asc, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { apiError, requireUser } from "../_utils";
 import { getDb } from "@/app/db";
-import { columns, tasks } from "@/app/db/schema";
-
-const workspaces = ["Producto", "Marketing", "Operaciones"];
+import { columns, tasks, workspaces } from "@/app/db/schema";
 
 export async function GET() {
   try {
@@ -27,24 +26,28 @@ export async function POST(request: Request) {
     if (!body || typeof body !== "object") {
       return Response.json({ error: "A column name is required." }, { status: 400 });
     }
-    const { name, workspace } = body as { name?: unknown; workspace?: unknown };
+    const { name, workspaceId } = body as { name?: unknown; workspaceId?: unknown };
     if (typeof name !== "string" || !name.trim()) {
       return Response.json({ error: "A column name is required." }, { status: 400 });
     }
-    if (workspace !== undefined && (typeof workspace !== "string" || !workspaces.includes(workspace))) {
+    if (!Number.isSafeInteger(workspaceId) || (workspaceId as number) < 1) {
       return Response.json({ error: "Choose a valid workspace." }, { status: 400 });
     }
 
     const db = getDb();
+    const [workspace] = await db.select().from(workspaces).where(eq(workspaces.id, workspaceId as number)).limit(1);
+    if (!workspace) return Response.json({ error: "Workspace not found." }, { status: 404 });
     const [created] = await db
       .insert(columns)
       .values({
         name: name.trim(),
-        workspace: (workspace as string | undefined) ?? workspaces[0],
+        workspace: workspace.name,
+        workspaceId: workspace.id,
         position: Date.now(),
       })
       .returning();
 
+    revalidatePath("/");
     return Response.json({ column: created }, { status: 201 });
   } catch (error) {
     return apiError(error);
@@ -71,6 +74,7 @@ export async function PATCH(request: Request) {
       .where(eq(columns.id, id as number))
       .returning();
     if (!updated) return Response.json({ error: "Column not found." }, { status: 404 });
+    revalidatePath("/");
     return Response.json({ column: updated });
   } catch (error) {
     return apiError(error);
@@ -98,6 +102,7 @@ export async function DELETE(request: Request) {
     }
     const [deleted] = await db.delete(columns).where(eq(columns.id, id)).returning({ id: columns.id });
     if (!deleted) return Response.json({ error: "Column not found." }, { status: 404 });
+    revalidatePath("/");
     return Response.json({ success: true });
   } catch (error) {
     return apiError(error);

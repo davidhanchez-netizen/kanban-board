@@ -2,16 +2,17 @@
 
 import Image from "next/image";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Priority = "high" | "medium" | "low";
-type Workspace = "Producto" | "Marketing" | "Operaciones";
+type Workspace = { id: number; name: string };
 type View = "board" | "list" | "calendar" | "dashboard";
 
 type Column = {
   id: number;
   name: string;
-  workspace: Workspace;
+  workspace: string;
+  workspaceId: number;
   position: number;
 };
 
@@ -37,7 +38,17 @@ type TaskComment = {
   createdAt: string;
   userName: string;
   userImage: string | null;
+  attachments: CommentAttachment[];
 };
+
+type CommentAttachment = {
+  id: number;
+  commentId: number;
+  fileName: string;
+  mimeType: string;
+};
+
+type MentionOption = { id: string; name: string };
 
 type UserOption = {
   id: string;
@@ -57,7 +68,6 @@ type TaskDraft = {
   completed: boolean;
 };
 
-const workspaces: Workspace[] = ["Producto", "Marketing", "Operaciones"];
 const priorityLabels: Record<Priority, string> = {
   high: "Alta",
   medium: "Media",
@@ -75,21 +85,29 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 async function loadBoardData(isAdmin: boolean) {
-  const [columnResult, taskResult, userResult] = await Promise.all([
+  const [columnResult, taskResult, workspaceResult, userResult, mentionResult] = await Promise.all([
     request<{ columns: Column[] }>("/api/columns", { cache: "no-store" }),
     request<{ tasks: Task[] }>("/api/tasks", { cache: "no-store" }),
+    request<{ workspaces: Workspace[] }>("/api/workspaces", { cache: "no-store" }),
     isAdmin
       ? request<{ users: UserOption[] }>("/api/users", { cache: "no-store" })
       : Promise.resolve({ users: [] as UserOption[] }),
+    request<{ members: MentionOption[] }>("/api/mentions", { cache: "no-store" }),
   ]);
-  return { columns: columnResult.columns, tasks: taskResult.tasks, users: userResult.users };
+  return {
+    columns: columnResult.columns,
+    tasks: taskResult.tasks,
+    users: userResult.users,
+    workspaces: workspaceResult.workspaces,
+    mentions: mentionResult.members,
+  };
 }
 
 function Icon({
   name,
   size = 18,
 }: {
-  name: "search" | "plus" | "filter" | "board" | "list" | "calendar" | "chart" | "inbox" | "chevron" | "more" | "clock" | "check" | "close" | "arrow" | "spark" | "trash" | "edit";
+  name: "search" | "plus" | "filter" | "board" | "list" | "calendar" | "chart" | "inbox" | "chevron" | "more" | "clock" | "check" | "close" | "arrow" | "spark" | "trash" | "edit" | "briefcase";
   size?: number;
 }) {
   const paths: Record<typeof name, React.ReactNode> = {
@@ -110,6 +128,7 @@ function Icon({
     spark: <><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-2-5.8L4 11l6-2.2L12 3Z" /><path d="m19 15 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z" /></>,
     trash: <><path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6" /><path d="M10 11v5m4-5v5" /></>,
     edit: <><path d="m15 5 4 4M4 20l4-.8L19 8a2.1 2.1 0 0 0-3-3L5 16l-1 4Z" /></>,
+    briefcase: <><rect x="3" y="7" width="18" height="14" rx="2" /><path d="M8 7V4h8v3M3 12h18m-11 0v2h4v-2" /></>,
   };
 
   return (
@@ -157,6 +176,9 @@ function TaskModal({
   columns,
   users,
   isAdmin,
+  commentAuthor,
+  commentAuthorImage,
+  mentionUsers,
   saving,
   onClose,
   onSave,
@@ -166,6 +188,9 @@ function TaskModal({
   columns: Column[];
   users: UserOption[];
   isAdmin: boolean;
+  commentAuthor: string;
+  commentAuthorImage: string | null;
+  mentionUsers: MentionOption[];
   saving: boolean;
   onClose: () => void;
   onSave: (draft: TaskDraft, id?: number) => Promise<void>;
@@ -237,23 +262,46 @@ function TaskModal({
           </div>
         </div>
       </form>
-      {task && <TaskComments taskId={task.id} />}
+      {task && <TaskComments taskId={task.id} author={commentAuthor} authorImage={commentAuthorImage} mentionUsers={mentionUsers} />}
     </Modal>
   );
 }
 
-function TaskComments({ taskId }: { taskId: number }) {
+function TaskComments({
+  taskId,
+  author,
+  authorImage,
+  mentionUsers,
+}: {
+  taskId: number;
+  author: string;
+  authorImage: string | null;
+  mentionUsers: MentionOption[];
+}) {
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [content, setContent] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
     request<{ comments: TaskComment[] }>(`/api/comments?taskId=${taskId}`, { cache: "no-store" })
       .then((result) => {
-        if (active) setComments(result.comments);
+        if (active) {
+          setComments((current) => {
+            const commentsById = new Map(result.comments.map((comment) => [comment.id, comment]));
+            for (const comment of current) commentsById.set(comment.id, comment);
+            return [...commentsById.values()].sort((left, right) =>
+              new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime() || left.id - right.id,
+            );
+          });
+        }
       })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : "No se pudieron cargar los comentarios.");
@@ -264,26 +312,101 @@ function TaskComments({ taskId }: { taskId: number }) {
     return () => { active = false; };
   }, [taskId]);
 
+  function insertMarkdown(value: string) {
+    const editor = editorRef.current;
+    const start = editor?.selectionStart ?? content.length;
+    const end = editor?.selectionEnd ?? content.length;
+    const next = `${content.slice(0, start)}${value}${content.slice(end)}`;
+    setContent(next);
+    requestAnimationFrame(() => {
+      editor?.focus();
+      editor?.setSelectionRange(start + value.length, start + value.length);
+    });
+    setToolsOpen(false);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedContent = content.trim();
-    if (!trimmedContent) return;
+    if (!trimmedContent && files.length === 0) return;
 
     setSaving(true);
     setError("");
+    const optimisticId = -Date.now();
+    const optimisticComment: TaskComment = {
+      id: optimisticId,
+      taskId,
+      userId: "current-user",
+      content: trimmedContent,
+      createdAt: new Date().toISOString(),
+      userName: author,
+      userImage: authorImage,
+      attachments: [],
+    };
+    setComments((current) => [...current, optimisticComment]);
+    setContent("");
+    let commentCreated = false;
+    let uploadedCount = 0;
     try {
       const result = await request<{ comment: TaskComment }>("/api/comments", {
         method: "POST",
-        body: JSON.stringify({ taskId, content: trimmedContent }),
+        body: JSON.stringify({ taskId, content: trimmedContent, attachmentsCount: files.length }),
       });
-      setComments((current) => [...current, result.comment]);
-      setContent("");
+      commentCreated = true;
+      setComments((current) => current.map((comment) => comment.id === optimisticId ? result.comment : comment));
+
+      for (const file of files) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("No se pudo leer el archivo."));
+          reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
+          reader.readAsDataURL(file);
+        });
+        const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+        const { attachment } = await request<{ attachment: CommentAttachment }>(
+          `/api/comments/${result.comment.id}/attachments`,
+          {
+            method: "POST",
+            body: JSON.stringify({ fileName: file.name, mimeType: file.type, data: base64 }),
+          },
+        );
+        setComments((current) => current.map((comment) =>
+          comment.id === result.comment.id
+            ? { ...comment, attachments: [...comment.attachments, attachment] }
+            : comment,
+        ));
+        uploadedCount++;
+      }
+      setFiles([]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo publicar el comentario.");
+      if (commentCreated) {
+        setFiles(files.slice(uploadedCount));
+        const detail = cause instanceof Error ? cause.message : "Error al subir el archivo.";
+        setError(`El comentario se guardó, pero no se pudieron subir todos los archivos: ${detail}`);
+      } else {
+        setComments((current) => current.filter((comment) => comment.id !== optimisticId));
+        setContent(trimmedContent);
+        setFiles(files);
+        setError(cause instanceof Error ? cause.message : "No se pudo publicar el comentario.");
+      }
     } finally {
       setSaving(false);
     }
   }
+
+  const toolbarItems = [
+    { label: "Encabezado grande", value: "# " },
+    { label: "Encabezado mediano", value: "## " },
+    { label: "Encabezado pequeño", value: "### " },
+    { label: "Lista con viñetas", value: "- " },
+    { label: "Lista numerada", value: "1. " },
+    { label: "Emoji", value: "😀" },
+    { label: "Enlace", value: "[texto](https://)" },
+    { label: "Tabla", value: "| Columna 1 | Columna 2 |\n| --- | --- |\n| Valor | Valor |" },
+    { label: "Separador", value: "\n---\n" },
+    { label: "Cita", value: "> " },
+    { label: "Bloque de código", value: "```\n\n```" },
+  ];
 
   return (
     <section className="mt-6 border-t border-slate-100 pt-5">
@@ -301,7 +424,19 @@ function TaskComments({ taskId }: { taskId: number }) {
                       {new Date(comment.createdAt).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
                     </time>
                   </div>
-                  <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-slate-600">{comment.content}</p>
+                  <MarkdownContent content={comment.content} />
+                  {comment.attachments.map((attachment) => {
+                    const url = `/api/comment-attachments?id=${attachment.id}`;
+                    return attachment.mimeType.startsWith("image/") ? (
+                      <a key={attachment.id} href={url} target="_blank" rel="noreferrer" className="mt-2 block w-fit">
+                        <Image src={url} alt={attachment.fileName} width={480} height={320} unoptimized className="max-h-48 max-w-full rounded-lg border border-slate-200 object-contain" />
+                      </a>
+                    ) : (
+                      <a key={attachment.id} href={url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-50">
+                        <Icon name="arrow" size={14} />{attachment.fileName}
+                      </a>
+                    );
+                  })}
                 </div>
               </li>
             ))}
@@ -309,19 +444,63 @@ function TaskComments({ taskId }: { taskId: number }) {
         ) : <p className="mt-3 text-xs text-slate-400">Aún no hay comentarios. Inicia la conversación.</p>}
       {error && <p role="alert" className="mt-3 text-xs text-rose-600">{error}</p>}
       <form onSubmit={submit} className="mt-4 space-y-2">
-        <textarea
-          aria-label="Escribe un comentario"
-          maxLength={5000}
-          rows={3}
-          required
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          placeholder="Escribe un comentario..."
-          className="form-control resize-y"
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-2 py-1.5">
+            <div className="relative">
+              <button type="button" aria-label="Insertar formato o contenido" onClick={() => setToolsOpen((open) => !open)} className="button-secondary !px-2 !py-1"><Icon name="plus" size={15} /></button>
+              {toolsOpen && <div className="absolute bottom-10 left-0 z-30 grid w-52 grid-cols-1 gap-0.5 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                {toolbarItems.map((item) => <button key={item.label} type="button" onClick={() => insertMarkdown(item.value)} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700">{item.label}</button>)}
+                <span className="px-2.5 pt-2 text-[10px] font-semibold uppercase text-slate-400">Mencionar a alguien</span>
+                {mentionUsers.slice(0, 8).map((member) => <button key={member.id} type="button" onClick={() => insertMarkdown(`@${member.name.replace(/\s+/g, "")} `)} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700">@{member.name}</button>)}
+                <button type="button" onClick={() => { setToolsOpen(false); fileInputRef.current?.click(); }} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700">Adjuntar imagen o archivo</button>
+              </div>}
+            </div>
+            <button type="button" onClick={() => setPreview((value) => !value)} className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-white">{preview ? "Editar Markdown" : "Vista previa"}</button>
+          </div>
+          {preview ? (
+            <div className="min-h-24 p-3"><MarkdownContent content={content || "La vista previa del comentario aparecerá aquí."} /></div>
+          ) : (
+            <textarea
+              ref={editorRef}
+              aria-label="Escribe un comentario en Markdown"
+              maxLength={5000}
+              rows={4}
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="Escribe un comentario... Usa Markdown para darle formato."
+              className="form-control resize-y rounded-none border-0 focus:shadow-none"
+            />
+          )}
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,text/csv"
+          className="hidden"
+          onChange={(event) => {
+            const selected = Array.from(event.target.files ?? []);
+            const allowedTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf", "text/plain", "text/csv"]);
+            const accepted = selected.filter((file) => {
+              if (!allowedTypes.has(file.type)) {
+                setError(`${file.name}: tipo de archivo no permitido.`);
+                return false;
+              }
+              if (file.size > 2 * 1024 * 1024) {
+                setError(`${file.name}: supera el límite de 2 MB.`);
+                return false;
+              }
+              return true;
+            });
+            setFiles((current) => [...current, ...accepted].slice(0, 5));
+            event.target.value = "";
+          }}
         />
+        {files.length > 0 && <ul className="flex flex-wrap gap-2">{files.map((file, index) => <li key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-[11px] text-slate-600"><span className="max-w-40 truncate">{file.name}</span><button type="button" aria-label={`Quitar ${file.name}`} onClick={() => setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))} className="rounded-full p-1 hover:bg-white"><Icon name="close" size={12} /></button></li>)}</ul>}
+        <p className="text-[10px] text-slate-400">Hasta 5 archivos, 2 MB cada uno. Imágenes, PDF, texto y CSV.</p>
         <div className="flex justify-end">
-          <button type="submit" disabled={saving || !content.trim()} className="button-primary">
-            {saving ? "Publicando..." : "Comentar"}
+          <button type="submit" disabled={saving || (!content.trim() && files.length === 0)} className="button-primary">
+            {saving ? <><span className="size-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />Publicando...</> : "Comentar"}
           </button>
         </div>
       </form>
@@ -329,22 +508,106 @@ function TaskComments({ taskId }: { taskId: number }) {
   );
 }
 
+function MarkdownContent({ content }: { content: string }) {
+  const lines = content.split(/\r?\n/);
+  const blocks: React.ReactNode[] = [];
+
+  function inline(text: string, keyPrefix: string): React.ReactNode[] {
+    const token = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+    const nodes: React.ReactNode[] = [];
+    let lastIndex = 0;
+    for (const match of text.matchAll(token)) {
+      const index = match.index ?? 0;
+      if (index > lastIndex) nodes.push(text.slice(lastIndex, index));
+      const value = match[0];
+      if (value.startsWith("[")) {
+        const link = value.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+        if (link) nodes.push(<a key={`${keyPrefix}-${index}`} href={link[2]} target="_blank" rel="noreferrer" className="text-indigo-600 underline">{link[1]}</a>);
+      } else if (value.startsWith("`")) {
+        nodes.push(<code key={`${keyPrefix}-${index}`} className="rounded bg-slate-100 px-1 py-0.5 text-[.9em]">{value.slice(1, -1)}</code>);
+      } else if (value.startsWith("**")) {
+        nodes.push(<strong key={`${keyPrefix}-${index}`}>{value.slice(2, -2)}</strong>);
+      } else {
+        nodes.push(<em key={`${keyPrefix}-${index}`}>{value.slice(1, -1)}</em>);
+      }
+      lastIndex = index + value.length;
+    }
+    if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+    return nodes;
+  }
+
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index];
+    if (!line.trim()) { index++; continue; }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const Tag = (`h${heading[1].length}`) as "h1" | "h2" | "h3";
+      const headingSize = heading[1].length === 1 ? "text-lg" : heading[1].length === 2 ? "text-base" : "text-sm";
+      blocks.push(<Tag key={index} className={`mt-2 font-semibold text-slate-800 ${headingSize}`}>{inline(heading[2], `h-${index}`)}</Tag>);
+      index++;
+      continue;
+    }
+    if (/^\s*(---|\*\*\*)\s*$/.test(line)) {
+      blocks.push(<hr key={index} className="my-3 border-slate-200" />);
+      index++;
+      continue;
+    }
+    if (line.startsWith("```")) {
+      const code: string[] = [];
+      index++;
+      while (index < lines.length && !lines[index].startsWith("```")) code.push(lines[index++]);
+      index++;
+      blocks.push(<pre key={`code-${index}`} className="my-2 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100"><code>{code.join("\n")}</code></pre>);
+      continue;
+    }
+    if (line.startsWith("> ")) {
+      blocks.push(<blockquote key={index} className="my-2 border-l-2 border-indigo-300 pl-3 text-slate-500">{inline(line.slice(2), `q-${index}`)}</blockquote>);
+      index++;
+      continue;
+    }
+    if (/^\s*[-*]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) {
+      const ordered = /^\s*\d+\.\s+/.test(line);
+      const items: string[] = [];
+      while (index < lines.length && (ordered ? /^\s*\d+\.\s+/ : /^\s*[-*]\s+/).test(lines[index])) {
+        items.push(lines[index++].replace(/^\s*(?:[-*]|\d+\.)\s+/, ""));
+      }
+      const List = ordered ? "ol" : "ul";
+      blocks.push(<List key={`list-${index}`} className={`my-2 pl-5 text-sm text-slate-600 ${ordered ? "list-decimal" : "list-disc"}`}>{items.map((item, itemIndex) => <li key={itemIndex}>{inline(item, `li-${index}-${itemIndex}`)}</li>)}</List>);
+      continue;
+    }
+    if (line.startsWith("|") && index + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[index + 1])) {
+      const rows = [line];
+      index += 2;
+      while (index < lines.length && lines[index].startsWith("|")) rows.push(lines[index++]);
+      const cells = rows.map((row) => row.split("|").slice(1, -1).map((cell) => cell.trim()));
+      blocks.push(<div key={`table-${index}`} className="my-2 overflow-x-auto"><table className="min-w-full border-collapse text-left text-xs"><tbody>{cells.map((row, rowIndex) => rowIndex === 1 ? null : <tr key={rowIndex}>{row.map((cell, cellIndex) => rowIndex === 0 ? <th key={cellIndex} className="border border-slate-200 bg-slate-50 px-2 py-1 font-semibold">{inline(cell, `th-${rowIndex}-${cellIndex}`)}</th> : <td key={cellIndex} className="border border-slate-200 px-2 py-1">{inline(cell, `td-${rowIndex}-${cellIndex}`)}</td>)}</tr>)}</tbody></table></div>);
+      continue;
+    }
+    const paragraph = [line];
+    index++;
+    while (index < lines.length && lines[index].trim() && !/^(#{1,3}\s|>|```|\s*[-*]\s+|\s*\d+\.\s+|\|)/.test(lines[index]) && !/^\s*(---|\*\*\*)\s*$/.test(lines[index])) paragraph.push(lines[index++]);
+    blocks.push(<p key={`p-${index}`} className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-slate-600">{inline(paragraph.join("\n"), `p-${index}`)}</p>);
+  }
+
+  return <div>{blocks}</div>;
+}
+
 function ColumnModal({
   column,
-  workspace,
+  workspaceName,
   saving,
   onClose,
   onSave,
 }: {
   column: Column | null;
-  workspace: Workspace;
+  workspaceName: string;
   saving: boolean;
   onClose: () => void;
   onSave: (name: string) => Promise<void>;
 }) {
   const [name, setName] = useState(column?.name ?? "");
   return (
-    <Modal title={column ? "Editar columna" : "Añadir columna"} subtitle={column ? "Cambia el nombre de esta etapa." : `Crea una etapa para ${workspace}.`} onClose={onClose}>
+    <Modal title={column ? "Editar columna" : "Añadir columna"} subtitle={column ? "Cambia el nombre de esta etapa." : `Crea una etapa para ${workspaceName}.`} onClose={onClose}>
       <form onSubmit={async (event) => { event.preventDefault(); await onSave(name); }} className="space-y-5">
         <Field label="Nombre de la columna">
           <input autoFocus required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="Por hacer" className="form-control" />
@@ -352,6 +615,31 @@ function ColumnModal({
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="button-secondary">Cancelar</button>
           <button type="submit" disabled={saving} className="button-primary">{saving ? "Guardando..." : column ? "Guardar" : "Añadir columna"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function WorkspaceModal({
+  saving,
+  onClose,
+  onSave,
+}: {
+  saving: boolean;
+  onClose: () => void;
+  onSave: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  return (
+    <Modal title="Crear espacio de trabajo" subtitle="El nuevo espacio quedará disponible para todo el equipo." onClose={onClose}>
+      <form onSubmit={async (event) => { event.preventDefault(); await onSave(name.trim()); }} className="space-y-5">
+        <Field label="Nombre del espacio">
+          <input autoFocus required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="Ej. Under Control" className="form-control" />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="button-secondary">Cancelar</button>
+          <button type="submit" disabled={saving || !name.trim()} className="button-primary">{saving ? "Creando..." : "Crear espacio"}</button>
         </div>
       </form>
     </Modal>
@@ -391,7 +679,9 @@ export default function Home() {
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
-  const [workspace, setWorkspace] = useState<Workspace>("Producto");
+  const [mentionUsers, setMentionUsers] = useState<MentionOption[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaceId, setWorkspaceId] = useState<number | null>(null);
   const [view, setView] = useState<View>("board");
   const [mineOnly, setMineOnly] = useState(false);
   const [search, setSearch] = useState("");
@@ -403,21 +693,20 @@ export default function Home() {
   const [error, setError] = useState("");
   const [taskDialog, setTaskDialog] = useState<{ open: boolean; task: Task | null }>({ open: false, task: null });
   const [columnDialog, setColumnDialog] = useState<{ open: boolean; column: Column | null }>({ open: false, column: null });
+  const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [columnMenu, setColumnMenu] = useState<number | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const data = await loadBoardData(isAdmin);
-      setColumns(data.columns);
-      setTasks(data.tasks);
-      setUsers(data.users);
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo cargar el tablero.");
-    } finally {
-      setLoading(false);
-    }
-  }, [isAdmin]);
+  const applyBoardData = useCallback((data: Awaited<ReturnType<typeof loadBoardData>>) => {
+    setColumns(data.columns);
+    setTasks(data.tasks);
+    setUsers(data.users);
+    setMentionUsers(data.mentions);
+    setWorkspaces(data.workspaces);
+    setWorkspaceId((currentId) => {
+      if (currentId && data.workspaces.some((workspace) => workspace.id === currentId)) return currentId;
+      return data.workspaces.find((workspace) => workspace.name === "Producto")?.id ?? data.workspaces[0]?.id ?? null;
+    });
+  }, []);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -425,9 +714,7 @@ export default function Home() {
     loadBoardData(isAdmin)
       .then((data) => {
         if (!active) return;
-        setColumns(data.columns);
-        setTasks(data.tasks);
-        setUsers(data.users);
+        applyBoardData(data);
         setError("");
       })
       .catch((cause: unknown) => {
@@ -437,15 +724,13 @@ export default function Home() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [status, isAdmin]);
+  }, [status, isAdmin, applyBoardData]);
 
   async function mutate<T>(url: string, init?: RequestInit): Promise<T | null> {
     setSaving(true);
     setError("");
     try {
-      const result = await request<T>(url, init);
-      await refresh();
-      return result;
+      return await request<T>(url, init);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "No se pudo guardar el cambio.");
       return null;
@@ -454,7 +739,9 @@ export default function Home() {
     }
   }
 
-  const activeColumns = useMemo(() => columns.filter((column) => column.workspace === workspace), [columns, workspace]);
+  const activeWorkspace = workspaces.find((item) => item.id === workspaceId) ?? null;
+  const workspaceName = activeWorkspace?.name ?? "Espacio de trabajo";
+  const activeColumns = useMemo(() => columns.filter((column) => column.workspaceId === workspaceId), [columns, workspaceId]);
   const activeColumnIds = useMemo(() => new Set(activeColumns.map((column) => column.id)), [activeColumns]);
   const workspaceTasks = useMemo(() => tasks.filter((task) => activeColumnIds.has(task.columnId)), [tasks, activeColumnIds]);
   const visibleTasks = useMemo(() => {
@@ -471,6 +758,25 @@ export default function Home() {
   const hasFilters = priorityFilter !== "all" || columnFilter !== "all";
 
   async function saveTask(draft: TaskDraft, id?: number) {
+    const previousTasks = tasks;
+    const existingTask = id ? tasks.find((task) => task.id === id) : undefined;
+    const selectedAssignee = users.find((user) => user.id === draft.assigneeId);
+    const optimisticTask: Task = {
+      id: id ?? -Date.now(),
+      title: draft.title.trim(),
+      description: draft.description,
+      priority: draft.priority,
+      columnId: Number(draft.columnId),
+      assignee: selectedAssignee?.name ?? selectedAssignee?.email ?? existingTask?.assignee ?? displayName,
+      assigneeId: isAdmin ? draft.assigneeId || null : currentUserId ?? null,
+      assigneeName: selectedAssignee?.name ?? selectedAssignee?.email ?? (isAdmin ? existingTask?.assigneeName : displayName) ?? displayName,
+      completed: draft.completed,
+      dueDate: draft.dueDate || null,
+      createdAt: existingTask?.createdAt ?? new Date().toISOString(),
+    };
+    setTasks((current) => id
+      ? current.map((task) => task.id === id ? optimisticTask : task)
+      : [...current, optimisticTask]);
     const result = await mutate<{ task: Task }>(id ? "/api/tasks" : "/api/tasks", {
       method: id ? "PATCH" : "POST",
       body: JSON.stringify({
@@ -484,32 +790,101 @@ export default function Home() {
         ...(id ? { completed: draft.completed } : {}),
       }),
     });
-    if (result) setTaskDialog({ open: false, task: null });
+    if (result) {
+      setTasks((current) => current.map((task) => task.id === optimisticTask.id
+        ? { ...result.task, assigneeName: result.task.assignee || optimisticTask.assigneeName }
+        : task));
+      setTaskDialog({ open: false, task: null });
+    } else setTasks(previousTasks);
   }
 
   async function deleteTask(id: number) {
+    const previousTasks = tasks;
+    setTasks((current) => current.filter((task) => task.id !== id));
     const result = await mutate<{ success: boolean }>(`/api/tasks?id=${id}`, { method: "DELETE" });
     if (result) setTaskDialog({ open: false, task: null });
+    else setTasks(previousTasks);
   }
 
   async function saveColumn(name: string) {
     const editing = columnDialog.column;
+    const previousColumns = columns;
+    const optimisticColumn: Column = {
+      id: editing?.id ?? -Date.now(),
+      name: name.trim(),
+      workspace: workspaceName,
+      workspaceId: workspaceId ?? 0,
+      position: editing?.position ?? Date.now(),
+    };
+    setColumns((current) => editing
+      ? current.map((column) => column.id === editing.id ? optimisticColumn : column)
+      : [...current, optimisticColumn]);
     const result = await mutate<{ column: Column }>("/api/columns", {
       method: editing ? "PATCH" : "POST",
-      body: JSON.stringify(editing ? { id: editing.id, name } : { name, workspace }),
+      body: JSON.stringify(editing ? { id: editing.id, name } : { name, workspaceId }),
     });
-    if (result) setColumnDialog({ open: false, column: null });
+    if (result) {
+      setColumns((current) => current.map((column) => column.id === optimisticColumn.id ? result.column : column));
+      setColumnDialog({ open: false, column: null });
+    } else setColumns(previousColumns);
+  }
+
+  async function createWorkspace(name: string) {
+    setSaving(true);
+    setError("");
+    const optimisticId = -Date.now();
+    const optimisticWorkspace = { id: optimisticId, name };
+    setWorkspaces((current) => [...current, optimisticWorkspace]);
+    setWorkspaceId(optimisticId);
+    try {
+      const result = await request<{ workspace: Workspace }>("/api/workspaces", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      setWorkspaces((current) => current.map((item) => item.id === optimisticId ? result.workspace : item));
+      setWorkspaceId(result.workspace.id);
+      setWorkspaceDialogOpen(false);
+    } catch (cause) {
+      setWorkspaces((current) => current.filter((item) => item.id !== optimisticId));
+      setWorkspaceId((current) => current === optimisticId ? activeWorkspace?.id ?? null : current);
+      setError(cause instanceof Error ? cause.message : "No se pudo crear el espacio de trabajo.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function deleteColumn(column: Column) {
     setColumnMenu(null);
+    const previousColumns = columns;
+    setColumns((current) => current.filter((item) => item.id !== column.id));
     const result = await mutate<{ success: boolean }>(`/api/columns?id=${column.id}`, { method: "DELETE" });
-    if (result) setError("");
+    if (!result) setColumns(previousColumns);
   }
 
   async function moveTask(task: Task, columnId: number) {
     if (task.columnId === columnId) return;
-    await mutate("/api/tasks", { method: "PATCH", body: JSON.stringify({ id: task.id, columnId }) });
+    const previousTasks = tasks;
+    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, columnId } : item));
+    const result = await mutate<{ task: Task }>("/api/tasks", { method: "PATCH", body: JSON.stringify({ id: task.id, columnId }) });
+    if (result) {
+      setTasks((current) => current.map((item) => item.id === task.id
+        ? { ...result.task, assigneeName: item.assigneeName }
+        : item));
+    } else setTasks(previousTasks);
+  }
+
+  async function toggleTaskCompletion(task: Task) {
+    const previousTasks = tasks;
+    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, completed: !item.completed } : item));
+    const result = await mutate<{ task: Task }>("/api/tasks", {
+      method: "PATCH",
+      body: JSON.stringify({ id: task.id, completed: !task.completed }),
+    });
+    if (result) {
+      setTasks((current) => current.map((item) => item.id === task.id
+        ? { ...result.task, assigneeName: item.assigneeName }
+        : item));
+    } else setTasks(previousTasks);
   }
 
   function showTask(task: Task) {
@@ -546,13 +921,17 @@ export default function Home() {
         </a>
 
         <div className="px-2">
-          <div className="mb-3 text-[10px] font-bold uppercase tracking-[.14em] text-slate-400">Espacios de trabajo</div>
+          <div className="mb-3 flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-[.14em] text-slate-400">
+            <span>Trabajo</span>
+            <button type="button" aria-label="Crear espacio de trabajo" onClick={() => setWorkspaceDialogOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-indigo-700"><Icon name="plus" size={15} /></button>
+          </div>
           <nav className="space-y-1">
-            {workspaces.map((item, index) => (
-              <button key={item} type="button" onClick={() => { setWorkspace(item); setMineOnly(false); setColumnFilter("all"); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${workspace === item ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}>
-                <span className={`size-2 rounded-full ${["bg-violet-500", "bg-orange-400", "bg-teal-500"][index]}`} />{item}<span className="ml-auto text-[11px] text-slate-400">{columns.filter((column) => column.workspace === item).length}</span>
+            {workspaces.map((item) => (
+              <button key={item.id} type="button" onClick={() => { setWorkspaceId(item.id); setMineOnly(false); setColumnFilter("all"); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${workspaceId === item.id ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}>
+                <Icon name="briefcase" size={16} />{item.name}<span className="ml-auto text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === item.id).length}</span>
               </button>
             ))}
+            {!workspaces.length && !loading && <p className="px-3 py-2 text-xs text-slate-400">Aún no hay espacios.</p>}
           </nav>
         </div>
 
@@ -564,7 +943,7 @@ export default function Home() {
 
         <div className="mt-auto rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 p-4">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-indigo-900"><Icon name="spark" size={15} />Todo en orden</div>
-          <p className="text-[11px] leading-5 text-indigo-800/70">{completedCount} de {workspaceTasks.length} tareas completadas en {workspace}.</p>
+          <p className="text-[11px] leading-5 text-indigo-800/70">{completedCount} de {workspaceTasks.length} tareas completadas en {workspaceName}.</p>
           <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/80"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${workspaceTasks.length ? completedCount / workspaceTasks.length * 100 : 0}%` }} /></div>
         </div>
         <div className="mt-4 flex items-center gap-2 border-t border-slate-100 px-1 pt-4">
@@ -577,7 +956,7 @@ export default function Home() {
           <div className="mx-auto flex h-[68px] max-w-[1600px] items-center justify-between gap-4 px-5 sm:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <span className="size-2.5 rounded-full bg-violet-500 lg:hidden" />
-              <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="hidden truncate text-[15px] font-bold text-slate-900 lg:block">{workspace}</h1><span className="hidden lg:block"><Icon name="chevron" size={14} /></span><select aria-label="Espacio de trabajo" value={workspace} onChange={(event) => { setWorkspace(event.target.value as Workspace); setMineOnly(false); setColumnFilter("all"); }} className="max-w-36 rounded-md border-0 bg-transparent p-0 text-[14px] font-bold text-slate-900 outline-none lg:hidden">{workspaces.map((item) => <option key={item} value={item}>{item}</option>)}</select><p className="mt-0.5 hidden text-[11px] text-slate-400 sm:block">Workspace / {workspace}</p></div></div>
+              <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="hidden truncate text-[15px] font-bold text-slate-900 lg:block">{workspaceName}</h1><span className="hidden lg:block"><Icon name="chevron" size={14} /></span><select aria-label="Espacio de trabajo" value={workspaceId ?? ""} onChange={(event) => { setWorkspaceId(Number(event.target.value)); setMineOnly(false); setColumnFilter("all"); }} className="max-w-36 rounded-md border-0 bg-transparent p-0 text-[14px] font-bold text-slate-900 outline-none lg:hidden">{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><p className="mt-0.5 hidden text-[11px] text-slate-400 sm:block">Trabajo / {workspaceName}</p></div></div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <button type="button" aria-label="Alternar mis tareas" onClick={() => setMineOnly(!mineOnly)} className={`rounded-lg p-2 sm:hidden ${mineOnly ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-100"}`}><Icon name="inbox" size={17} /></button>
@@ -605,7 +984,7 @@ export default function Home() {
 
         <div className="mx-auto max-w-[1600px] px-5 pb-12 pt-7 sm:px-8">
           <div className="mb-6 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
-            <div><div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-slate-400"><span>Workspace</span><span>/</span><span className="text-indigo-600">{workspace}</span></div><h2 className="text-[26px] font-bold tracking-[-.04em] text-slate-900 sm:text-[30px]">{view === "dashboard" ? "Panel de resumen" : "Hola, aquí está tu trabajo."}</h2><p className="mt-1 text-sm text-slate-500">{view === "dashboard" ? `Un vistazo al progreso de ${workspace}.` : "Organiza tus prioridades y mantén el ritmo del equipo."}</p></div>
+            <div><div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-slate-400"><span>Trabajo</span><span>/</span><span className="text-indigo-600">{workspaceName}</span></div><h2 className="text-[26px] font-bold tracking-[-.04em] text-slate-900 sm:text-[30px]">{view === "dashboard" ? "Panel de resumen" : "Hola, aquí está tu trabajo."}</h2><p className="mt-1 text-sm text-slate-500">{view === "dashboard" ? `Un vistazo al progreso de ${workspaceName}.` : "Organiza tus prioridades y mantén el ritmo del equipo."}</p></div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
                 {(["board", "list", "calendar", "dashboard"] as View[]).map((item) => <button key={item} type="button" aria-label={`Vista ${viewNames[item]}`} onClick={() => setView(item)} className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold transition ${view === item ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}><Icon name={item === "board" ? "board" : item === "list" ? "list" : item === "calendar" ? "calendar" : "chart"} size={15} /><span className="hidden sm:inline">{viewNames[item]}</span></button>)}
@@ -643,7 +1022,7 @@ export default function Home() {
                         <div className="relative"><button type="button" aria-label={`Acciones para ${column.name}`} onClick={() => setColumnMenu(columnMenu === column.id ? null : column.id)} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><Icon name="more" size={17} /></button>{columnMenu === column.id && <div className="absolute right-0 top-8 z-20 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl"><button type="button" onClick={() => { setColumnMenu(null); setColumnDialog({ open: true, column }); }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"><Icon name="edit" size={14} />Editar nombre</button><button type="button" onClick={() => void deleteColumn(column)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"><Icon name="trash" size={14} />Eliminar columna</button></div>}</div>
                       </div>
                       <div className="space-y-2.5">
-                        {items.map((task) => <TaskCard key={task.id} task={task} onClick={() => showTask(task)} onComplete={() => void mutate("/api/tasks", { method: "PATCH", body: JSON.stringify({ id: task.id, completed: !task.completed }) })} />)}
+                        {items.map((task) => <TaskCard key={task.id} task={task} onClick={() => showTask(task)} onComplete={() => void toggleTaskCompletion(task)} />)}
                         {items.length === 0 && <div className="rounded-lg border border-dashed border-slate-300 bg-white/55 px-3 py-7 text-center text-xs text-slate-400">{search || hasFilters || mineOnly ? "No hay resultados." : "Suelta aquí una tarea o crea una nueva."}</div>}
                         <button type="button" onClick={() => setTaskDialog({ open: true, task: null })} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-500 transition hover:bg-white hover:text-indigo-700"><Icon name="plus" size={15} />Añadir tarea</button>
                       </div>
@@ -655,7 +1034,7 @@ export default function Home() {
             ) : view === "list" ? (
               <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/30">
                 <div className="overflow-x-auto"><table className="w-full min-w-[720px] border-collapse text-left"><thead><tr className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400"><th className="px-5 py-3">Tarea</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3">Prioridad</th><th className="px-4 py-3">Asignada a</th><th className="px-4 py-3">Fecha</th><th className="px-4 py-3 text-right">Acción</th></tr></thead><tbody>
-                  {visibleTasks.map((task) => <tr key={task.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70"><td className="max-w-[340px] px-5 py-3.5"><button type="button" onClick={() => showTask(task)} className={`block truncate text-left text-sm font-semibold hover:text-indigo-700 ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</button>{task.description && <p className="mt-1 truncate text-xs text-slate-400">{task.description}</p>}</td><td className="px-4 py-3.5"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin estado"}</span></td><td className="px-4 py-3.5"><PriorityPill priority={task.priority} /></td><td className="px-4 py-3.5"><span className="flex items-center gap-2 text-xs text-slate-600"><span className="flex size-6 items-center justify-center rounded-full bg-indigo-50 text-[9px] font-bold text-indigo-600">{initials(task.assigneeName)}</span>{task.assigneeName}</span></td><td className="px-4 py-3.5 text-xs text-slate-500">{new Date(task.dueDate ?? task.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</td><td className="px-4 py-3.5 text-right"><button type="button" aria-label={task.completed ? "Marcar como pendiente" : "Marcar como completada"} onClick={() => void mutate("/api/tasks", { method: "PATCH", body: JSON.stringify({ id: task.id, completed: !task.completed }) })} className={`rounded-lg p-2 ${task.completed ? "text-emerald-600 hover:bg-emerald-50" : "text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"}`}><Icon name="check" size={17} /></button></td></tr>)}
+                  {visibleTasks.map((task) => <tr key={task.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70"><td className="max-w-[340px] px-5 py-3.5"><button type="button" onClick={() => showTask(task)} className={`block truncate text-left text-sm font-semibold hover:text-indigo-700 ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</button>{task.description && <p className="mt-1 truncate text-xs text-slate-400">{task.description}</p>}</td><td className="px-4 py-3.5"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin estado"}</span></td><td className="px-4 py-3.5"><PriorityPill priority={task.priority} /></td><td className="px-4 py-3.5"><span className="flex items-center gap-2 text-xs text-slate-600"><span className="flex size-6 items-center justify-center rounded-full bg-indigo-50 text-[9px] font-bold text-indigo-600">{initials(task.assigneeName)}</span>{task.assigneeName}</span></td><td className="px-4 py-3.5 text-xs text-slate-500">{new Date(task.dueDate ?? task.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</td><td className="px-4 py-3.5 text-right"><button type="button" aria-label={task.completed ? "Marcar como pendiente" : "Marcar como completada"} onClick={() => void toggleTaskCompletion(task)} className={`rounded-lg p-2 ${task.completed ? "text-emerald-600 hover:bg-emerald-50" : "text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"}`}><Icon name="check" size={17} /></button></td></tr>)}
                   </tbody></table></div>
                 {visibleTasks.length === 0 && <div className="p-8"><EmptyState title="No hay tareas para mostrar" body="Prueba con otros filtros o crea una tarea nueva." onAction={() => setTaskDialog({ open: true, task: null })} action="Nueva tarea" /></div>}
               </div>
@@ -673,8 +1052,9 @@ export default function Home() {
         </div>
       </main>
 
-      {taskDialog.open && <TaskModal key={taskDialog.task?.id ?? "new-task"} task={taskDialog.task} columns={activeColumns} users={users} isAdmin={isAdmin} saving={saving} onClose={() => setTaskDialog({ open: false, task: null })} onSave={saveTask} onDelete={isAdmin ? deleteTask : undefined} />}
-      {columnDialog.open && <ColumnModal key={columnDialog.column?.id ?? "new-column"} column={columnDialog.column} workspace={workspace} saving={saving} onClose={() => setColumnDialog({ open: false, column: null })} onSave={saveColumn} />}
+      {taskDialog.open && <TaskModal key={taskDialog.task?.id ?? "new-task"} task={taskDialog.task} columns={activeColumns} users={users} isAdmin={isAdmin} commentAuthor={displayName} commentAuthorImage={session.user.image ?? null} mentionUsers={mentionUsers} saving={saving} onClose={() => setTaskDialog({ open: false, task: null })} onSave={saveTask} onDelete={isAdmin ? deleteTask : undefined} />}
+      {columnDialog.open && <ColumnModal key={columnDialog.column?.id ?? "new-column"} column={columnDialog.column} workspaceName={workspaceName} saving={saving} onClose={() => setColumnDialog({ open: false, column: null })} onSave={saveColumn} />}
+      {workspaceDialogOpen && <WorkspaceModal saving={saving} onClose={() => setWorkspaceDialogOpen(false)} onSave={createWorkspace} />}
       <style jsx global>{`
         @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
         .form-control { width: 100%; border: 1px solid #e2e8f0; border-radius: 9px; background: white; padding: 9px 11px; font-size: 13px; color: #1e293b; outline: none; transition: border-color .15s, box-shadow .15s; }

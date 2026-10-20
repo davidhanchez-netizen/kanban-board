@@ -1,4 +1,5 @@
 import { asc, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { apiError, isPriority, requireRole, requireUser } from "../_utils";
 import { getDb } from "@/app/db";
 import { columns, tasks, users } from "@/app/db/schema";
@@ -100,6 +101,7 @@ export async function POST(request: Request) {
         dueDate: (task.dueDate as string | null | undefined) ?? null,
       })
       .returning();
+    revalidatePath("/");
     return Response.json({ task: created }, { status: 201 });
   } catch (error) {
     return apiError(error);
@@ -191,6 +193,7 @@ export async function PATCH(request: Request) {
       .where(eq(tasks.id, update.id as number))
       .returning();
     if (!updated) return Response.json({ error: "Task not found." }, { status: 404 });
+    revalidatePath("/");
     return Response.json({ task: updated });
   } catch (error) {
     return apiError(error);
@@ -211,6 +214,7 @@ export async function DELETE(request: Request) {
     }
     const [deleted] = await getDb().delete(tasks).where(eq(tasks.id, id)).returning({ id: tasks.id });
     if (!deleted) return Response.json({ error: "Task not found." }, { status: 404 });
+    revalidatePath("/");
     return Response.json({ success: true });
   } catch (error) {
     return apiError(error);

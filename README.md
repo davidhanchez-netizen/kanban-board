@@ -24,11 +24,13 @@ La base ya existente debe conservar sus tablas `board_columns` y `tasks`. Ejecut
 
 Para añadir comentarios sin modificar los datos actuales, ejecuta una sola vez [`drizzle/0002_task_comments.sql`](./drizzle/0002_task_comments.sql) en el SQL Editor de Neon. Solo crea la tabla `comments` y sus claves foráneas con borrado en cascada.
 
+Para crear espacios de trabajo persistentes y adjuntos de comentarios, ejecuta una sola vez [`drizzle/0003_workspaces_and_comment_attachments.sql`](./drizzle/0003_workspaces_and_comment_attachments.sql) después de las migraciones anteriores. La migración conserva los espacios existentes y asocia las columnas actuales a sus espacios correspondientes. Los adjuntos aceptan imágenes, PDF, texto y CSV de hasta 2 MB por archivo (máximo 5 por comentario); se guardan como Base64 en Neon.
+
 Las tareas previas sin `assignee_id` siguen visibles para los usuarios autenticados, pero no se podrán asignar automáticamente a miembros hasta que un administrador las asigne. Las operaciones de escritura se autorizan también en servidor.
 
 ### 3. Iniciar y comprobar
 
-Instala dependencias y ejecuta `npm run dev`. Los usuarios inician sesión con Google. El panel de asignación aparece a los administradores para asignar tareas a perfiles existentes. Los miembros pueden ver y editar las tareas del equipo, crear nuevas tareas (asignadas automáticamente a ellos) y cambiar columnas o estados; la asignación y eliminación de tareas siguen siendo exclusivas de administradores. Todos los usuarios autenticados pueden gestionar columnas y comentar en tareas.
+Instala dependencias y ejecuta `npm run dev`. Los usuarios inician sesión con Google. Los espacios de trabajo creados desde el botón `+` de la sección Trabajo se comparten con los usuarios autenticados. El panel de asignación aparece a los administradores para asignar tareas a perfiles existentes. Los miembros pueden ver y editar las tareas del equipo, crear nuevas tareas (asignadas automáticamente a ellos) y cambiar columnas o estados; la asignación y eliminación de tareas siguen siendo exclusivas de administradores. Todos los usuarios autenticados pueden gestionar columnas y comentar en tareas. Los comentarios aceptan Markdown; el contenido HTML arbitrario no se interpreta.
 
 Las rutas de Auth.js están en `/api/auth/*`. `/api/columns`, `/api/tasks` y `/api/comments` exigen sesión. Los miembros pueden editar los detalles de las tareas, pero no reasignarlas; la eliminación de tareas y la lista de usuarios/asignables siguen siendo exclusivas de administradores.
 

@@ -63,10 +63,20 @@ export const verificationTokens = pgTable(
   ],
 );
 
+export const workspaces = pgTable("workspaces", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const columns = pgTable("board_columns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   workspace: text("workspace").notNull().default("Producto"),
+  workspaceId: integer("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
   position: bigint("position", { mode: "number" }).notNull().default(0),
 });
 
@@ -97,7 +107,19 @@ export const comments = pgTable("comments", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const commentAttachments = pgTable("comment_attachments", {
+  id: serial("id").primaryKey(),
+  commentId: integer("comment_id")
+    .notNull()
+    .references(() => comments.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  data: text("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Column = typeof columns.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
+export type Workspace = typeof workspaces.$inferSelect;
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
