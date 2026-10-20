@@ -9,6 +9,7 @@ Crea `.env.local` a partir de `.env.example` y conserva el `DATABASE_URL` de Neo
 - `AUTH_SECRET`: secreto aleatorio para firmar sesiones (genéralo con `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`).
 - `AUTH_GOOGLE_ID` y `AUTH_GOOGLE_SECRET`: credenciales OAuth de Google.
 - `ADMIN_EMAILS`: lista separada por comas de correos autorizados como administradores.
+- `PUSHER_APP_ID`, `PUSHER_KEY`, `PUSHER_SECRET` y `PUSHER_CLUSTER`: credenciales de una aplicación de Pusher Channels. Configura los mismos valores en `.env.local` y en las variables de entorno de Vercel (Production, Preview y Development, según corresponda). No compartas ni expongas `PUSHER_SECRET`.
 
 Registra `http://localhost:3000/api/auth/callback/google` como callback de Google. En producción usa `https://TU-DOMINIO/api/auth/callback/google`.
 
@@ -33,6 +34,10 @@ Las tareas previas sin `assignee_id` siguen visibles para los usuarios autentica
 Instala dependencias y ejecuta `npm run dev`. Los usuarios inician sesión con Google. Los espacios de trabajo creados desde el botón `+` de la sección Trabajo se comparten con los usuarios autenticados. El panel de asignación aparece a los administradores para asignar tareas a perfiles existentes. Los miembros pueden ver y editar las tareas del equipo, crear nuevas tareas (asignadas automáticamente a ellos) y cambiar columnas o estados; la asignación y eliminación de tareas siguen siendo exclusivas de administradores. Todos los usuarios autenticados pueden gestionar columnas y comentar en tareas. Los comentarios aceptan Markdown; el contenido HTML arbitrario no se interpreta.
 
 Las rutas de Auth.js están en `/api/auth/*`. `/api/columns`, `/api/tasks` y `/api/comments` exigen sesión. Los miembros pueden editar los detalles de las tareas, pero no reasignarlas; la eliminación de tareas y la lista de usuarios/asignables siguen siendo exclusivas de administradores.
+
+### Actualizaciones en tiempo real
+
+El tablero usa Pusher Channels con un canal privado por espacio (`private-workspace-{id}`). Las rutas de servidor publican eventos de creación, actualización, movimiento y eliminación de tareas y columnas, además de creación y actualización de comentarios. La autorización del canal requiere una sesión válida y un espacio de trabajo existente. Para activar esta función, crea una app de Pusher Channels y define `PUSHER_APP_ID`, `PUSHER_KEY`, `PUSHER_SECRET` y `PUSHER_CLUSTER` en `.env.local` y en Vercel. El ID de aplicación y la clave pública se entregan al cliente autenticado desde `/api/pusher/config`; el secreto permanece solo en el servidor. Si no se configuran las credenciales, el tablero y sus cambios guardados continúan funcionando, pero la suscripción en tiempo real no estará disponible.
 
 ## Getting Started
 

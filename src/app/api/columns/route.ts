@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { apiError, requireUser } from "../_utils";
+import { publishWorkspaceEvent } from "../_pusher";
 import { getDb } from "@/app/db";
 import { columns, tasks, workspaces } from "@/app/db/schema";
 
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
       })
       .returning();
 
+    await publishWorkspaceEvent(created.workspaceId, "column:created", { column: created });
     revalidatePath("/");
     return Response.json({ column: created }, { status: 201 });
   } catch (error) {
@@ -74,6 +76,7 @@ export async function PATCH(request: Request) {
       .where(eq(columns.id, id as number))
       .returning();
     if (!updated) return Response.json({ error: "Column not found." }, { status: 404 });
+    await publishWorkspaceEvent(updated.workspaceId, "column:updated", { column: updated });
     revalidatePath("/");
     return Response.json({ column: updated });
   } catch (error) {
@@ -93,6 +96,12 @@ export async function DELETE(request: Request) {
     }
 
     const db = getDb();
+    const [existing] = await db
+      .select({ id: columns.id, workspaceId: columns.workspaceId })
+      .from(columns)
+      .where(eq(columns.id, id))
+      .limit(1);
+    if (!existing) return Response.json({ error: "Column not found." }, { status: 404 });
     const [existingTask] = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.columnId, id)).limit(1);
     if (existingTask) {
       return Response.json(
@@ -102,6 +111,7 @@ export async function DELETE(request: Request) {
     }
     const [deleted] = await db.delete(columns).where(eq(columns.id, id)).returning({ id: columns.id });
     if (!deleted) return Response.json({ error: "Column not found." }, { status: 404 });
+    await publishWorkspaceEvent(existing.workspaceId, "column:deleted", { id: deleted.id });
     revalidatePath("/");
     return Response.json({ success: true });
   } catch (error) {

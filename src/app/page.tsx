@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { signIn, signOut, useSession } from "next-auth/react";
+import Pusher from "pusher-js";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Priority = "high" | "medium" | "low";
@@ -180,6 +181,8 @@ function TaskModal({
   commentAuthor,
   commentAuthorImage,
   mentionUsers,
+  workspaceId,
+  pusherClient,
   saving,
   onClose,
   onSave,
@@ -192,6 +195,8 @@ function TaskModal({
   commentAuthor: string;
   commentAuthorImage: string | null;
   mentionUsers: MentionOption[];
+  workspaceId: number | null;
+  pusherClient: Pusher | null;
   saving: boolean;
   onClose: () => void;
   onSave: (draft: TaskDraft, id?: number) => Promise<void>;
@@ -263,18 +268,22 @@ function TaskModal({
           </div>
         </div>
       </form>
-      {task && <TaskComments taskId={task.id} author={commentAuthor} authorImage={commentAuthorImage} mentionUsers={mentionUsers} />}
+      {task && <TaskComments taskId={task.id} workspaceId={workspaceId} pusherClient={pusherClient} author={commentAuthor} authorImage={commentAuthorImage} mentionUsers={mentionUsers} />}
     </Modal>
   );
 }
 
 function TaskComments({
   taskId,
+  workspaceId,
+  pusherClient,
   author,
   authorImage,
   mentionUsers,
 }: {
   taskId: number;
+  workspaceId: number | null;
+  pusherClient: Pusher | null;
   author: string;
   authorImage: string | null;
   mentionUsers: MentionOption[];
@@ -313,6 +322,38 @@ function TaskComments({
       });
     return () => { active = false; };
   }, [taskId]);
+
+  useEffect(() => {
+    if (!pusherClient || !workspaceId) return;
+    const channel = pusherClient.channel(`private-workspace-${workspaceId}`);
+    if (!channel) return;
+
+    function onCommentCreated(payload: { comment?: TaskComment }) {
+      const comment = payload.comment;
+      if (!comment || comment.taskId !== taskId) return;
+      setComments((current) => current.some((item) => item.id === comment.id)
+        ? current
+        : [...current, comment].sort((left, right) =>
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime() || left.id - right.id,
+        ));
+    }
+
+    function onCommentUpdated(payload: { comment?: { id?: number; taskId?: number } }) {
+      if (!payload.comment || payload.comment.taskId !== taskId) return;
+      request<{ comments: TaskComment[] }>(`/api/comments?taskId=${taskId}`, { cache: "no-store" })
+        .then((result) => setComments(result.comments))
+        .catch((cause: unknown) => {
+          setError(cause instanceof Error ? cause.message : "No se pudieron actualizar los comentarios.");
+        });
+    }
+
+    channel.bind("comment:created", onCommentCreated);
+    channel.bind("comment:updated", onCommentUpdated);
+    return () => {
+      channel.unbind("comment:created", onCommentCreated);
+      channel.unbind("comment:updated", onCommentUpdated);
+    };
+  }, [pusherClient, taskId, workspaceId]);
 
   useEffect(() => {
     if (!toolsOpen) return;
@@ -367,7 +408,12 @@ function TaskComments({
         body: JSON.stringify({ taskId, content: commentContent, attachmentsCount: files.length }),
       });
       commentCreated = true;
-      setComments((current) => current.map((comment) => comment.id === optimisticId ? result.comment : comment));
+      setComments((current) => [
+        ...current.filter((comment) => comment.id !== optimisticId && comment.id !== result.comment.id),
+        result.comment,
+      ].sort((left, right) =>
+        new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime() || left.id - right.id,
+      ));
 
       let commentMarkdown = commentContent;
       for (const pending of files) {
@@ -737,6 +783,8 @@ export default function Home() {
   const [columnDialog, setColumnDialog] = useState<{ open: boolean; column: Column | null }>({ open: false, column: null });
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [columnMenu, setColumnMenu] = useState<number | null>(null);
+  const [pusherClient, setPusherClient] = useState<Pusher | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "connected" | "unavailable">("connecting");
 
   const applyBoardData = useCallback((data: Awaited<ReturnType<typeof loadBoardData>>) => {
     setColumns(data.columns);
@@ -767,6 +815,92 @@ export default function Home() {
       });
     return () => { active = false; };
   }, [status, isAdmin, applyBoardData]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !workspaceId || workspaceId < 1) return;
+
+    let active = true;
+    let client: Pusher | null = null;
+    request<{ key: string; cluster: string }>("/api/pusher/config", { cache: "no-store" })
+      .then(({ key, cluster }) => {
+        if (!active) return;
+        setRealtimeStatus("connecting");
+        client = new Pusher(key, {
+          cluster,
+          channelAuthorization: { endpoint: "/api/pusher/auth", transport: "ajax" },
+        });
+        const channel = client.subscribe(`private-workspace-${workspaceId}`);
+        channel.bind("pusher:subscription_succeeded", () => {
+          if (active) setRealtimeStatus("connected");
+        });
+        channel.bind("pusher:subscription_error", (cause: unknown) => {
+          console.error("Pusher workspace subscription failed:", cause);
+          if (active) setRealtimeStatus("unavailable");
+        });
+
+        const upsertTask = (payload: { task?: Task; removed?: boolean; id?: number }) => {
+          if (payload.removed && Number.isSafeInteger(payload.id)) {
+            setTasks((current) => current.filter((task) => task.id !== payload.id));
+            setTaskDialog((current) => current.task?.id === payload.id ? { open: false, task: null } : current);
+            return;
+          }
+          const task = payload.task;
+          if (!task || !Number.isSafeInteger(task.id)) return;
+          setTasks((current) => {
+            const existing = current.find((item) => item.id === task.id);
+            const nextTask = { ...task, assigneeName: task.assigneeName ?? task.assignee ?? existing?.assigneeName ?? "Usuario" };
+            return existing
+              ? current.map((item) => item.id === task.id ? nextTask : item)
+              : [...current, nextTask];
+          });
+          setTaskDialog((current) => current.task?.id === task.id
+            ? { ...current, task: { ...task, assigneeName: task.assigneeName ?? task.assignee ?? current.task.assigneeName } }
+            : current);
+        };
+        const removeTask = (payload: { id?: number }) => {
+          if (!Number.isSafeInteger(payload.id)) return;
+          setTasks((current) => current.filter((task) => task.id !== payload.id));
+          setTaskDialog((current) => current.task?.id === payload.id ? { open: false, task: null } : current);
+        };
+        const upsertColumn = (payload: { column?: Column }) => {
+          const column = payload.column;
+          if (!column || !Number.isSafeInteger(column.id)) return;
+          setColumns((current) => {
+            const exists = current.some((item) => item.id === column.id);
+            return exists
+              ? current.map((item) => item.id === column.id ? column : item)
+              : [...current, column];
+          });
+        };
+        const removeColumn = (payload: { id?: number }) => {
+          if (!Number.isSafeInteger(payload.id)) return;
+          setColumns((current) => current.filter((column) => column.id !== payload.id));
+          setTasks((current) => current.filter((task) => task.columnId !== payload.id));
+        };
+
+        channel.bind("task:created", upsertTask);
+        channel.bind("task:updated", upsertTask);
+        channel.bind("task:moved", upsertTask);
+        channel.bind("task:deleted", removeTask);
+        channel.bind("column:created", upsertColumn);
+        channel.bind("column:updated", upsertColumn);
+        channel.bind("column:deleted", removeColumn);
+        setPusherClient(client);
+      })
+      .catch((cause: unknown) => {
+        console.error("Unable to initialize Pusher real-time updates:", cause);
+        if (active) setRealtimeStatus("unavailable");
+      });
+
+    return () => {
+      active = false;
+      setPusherClient(null);
+      if (client) {
+        client.unsubscribe(`private-workspace-${workspaceId}`);
+        client.disconnect();
+      }
+    };
+  }, [status, workspaceId]);
 
   async function mutate<T>(url: string, init?: RequestInit): Promise<T | null> {
     setSaving(true);
@@ -833,9 +967,10 @@ export default function Home() {
       }),
     });
     if (result) {
-      setTasks((current) => current.map((task) => task.id === optimisticTask.id
-        ? { ...result.task, assigneeName: result.task.assignee || optimisticTask.assigneeName }
-        : task));
+      setTasks((current) => [
+        ...current.filter((task) => task.id !== optimisticTask.id && task.id !== result.task.id),
+        { ...result.task, assigneeName: result.task.assignee || optimisticTask.assigneeName },
+      ]);
       setTaskDialog({ open: false, task: null });
     } else setTasks(previousTasks);
   }
@@ -866,7 +1001,10 @@ export default function Home() {
       body: JSON.stringify(editing ? { id: editing.id, name } : { name, workspaceId }),
     });
     if (result) {
-      setColumns((current) => current.map((column) => column.id === optimisticColumn.id ? result.column : column));
+      setColumns((current) => [
+        ...current.filter((column) => column.id !== optimisticColumn.id && column.id !== result.column.id),
+        result.column,
+      ]);
       setColumnDialog({ open: false, column: null });
     } else setColumns(previousColumns);
   }
@@ -999,6 +1137,7 @@ export default function Home() {
             <div className="flex min-w-0 items-center gap-3">
               <span className="size-2.5 rounded-full bg-violet-500 lg:hidden" />
               <div className="min-w-0"><div className="flex items-center gap-2"><h1 className="hidden truncate text-[15px] font-bold text-slate-900 lg:block">{workspaceName}</h1><span className="hidden lg:block"><Icon name="chevron" size={14} /></span><select aria-label="Espacio de trabajo" value={workspaceId ?? ""} onChange={(event) => { setWorkspaceId(Number(event.target.value)); setMineOnly(false); setColumnFilter("all"); }} className="max-w-36 rounded-md border-0 bg-transparent p-0 text-[14px] font-bold text-slate-900 outline-none lg:hidden">{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><p className="mt-0.5 hidden text-[11px] text-slate-400 sm:block">Trabajo / {workspaceName}</p></div></div>
+              {workspaceId && <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[10px] font-medium sm:inline-flex ${realtimeStatus === "connected" ? "bg-emerald-50 text-emerald-700" : realtimeStatus === "connecting" ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"}`}>{realtimeStatus === "connected" ? "En tiempo real" : realtimeStatus === "connecting" ? "Conectando…" : "Tiempo real no disponible"}</span>}
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <button type="button" aria-label="Alternar mis tareas" onClick={() => setMineOnly(!mineOnly)} className={`rounded-lg p-2 sm:hidden ${mineOnly ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-100"}`}><Icon name="inbox" size={17} /></button>
@@ -1094,7 +1233,7 @@ export default function Home() {
         </div>
       </main>
 
-      {taskDialog.open && <TaskModal key={taskDialog.task?.id ?? "new-task"} task={taskDialog.task} columns={activeColumns} users={users} isAdmin={isAdmin} commentAuthor={displayName} commentAuthorImage={session.user.image ?? null} mentionUsers={mentionUsers} saving={saving} onClose={() => setTaskDialog({ open: false, task: null })} onSave={saveTask} onDelete={isAdmin ? deleteTask : undefined} />}
+      {taskDialog.open && <TaskModal key={taskDialog.task?.id ?? "new-task"} task={taskDialog.task} columns={activeColumns} users={users} isAdmin={isAdmin} commentAuthor={displayName} commentAuthorImage={session.user.image ?? null} mentionUsers={mentionUsers} workspaceId={workspaceId} pusherClient={pusherClient} saving={saving} onClose={() => setTaskDialog({ open: false, task: null })} onSave={saveTask} onDelete={isAdmin ? deleteTask : undefined} />}
       {columnDialog.open && <ColumnModal key={columnDialog.column?.id ?? "new-column"} column={columnDialog.column} workspaceName={workspaceName} saving={saving} onClose={() => setColumnDialog({ open: false, column: null })} onSave={saveColumn} />}
       {workspaceDialogOpen && <WorkspaceModal saving={saving} onClose={() => setWorkspaceDialogOpen(false)} onSave={createWorkspace} />}
       <style jsx global>{`

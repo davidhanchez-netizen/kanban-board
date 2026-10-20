@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { apiError, isPriority, requireRole, requireUser } from "../_utils";
+import { publishWorkspaceEvent } from "../_pusher";
 import { getDb } from "@/app/db";
 import { columns, tasks, users } from "@/app/db/schema";
 
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Assignee not found." }, { status: 404 });
     }
     const [destination] = await db
-      .select({ id: columns.id })
+      .select({ id: columns.id, workspaceId: columns.workspaceId })
       .from(columns)
       .where(eq(columns.id, task.columnId as number))
       .limit(1);
@@ -101,6 +102,7 @@ export async function POST(request: Request) {
         dueDate: (task.dueDate as string | null | undefined) ?? null,
       })
       .returning();
+    await publishWorkspaceEvent(destination.workspaceId, "task:created", { task: created });
     revalidatePath("/");
     return Response.json({ task: created }, { status: 201 });
   } catch (error) {
@@ -126,6 +128,15 @@ export async function PATCH(request: Request) {
     if (!Number.isSafeInteger(update.id) || (update.id as number) < 1) {
       return Response.json({ error: "A valid task id is required." }, { status: 400 });
     }
+    const db = getDb();
+    const [previous] = await db
+      .select({ id: tasks.id, columnId: tasks.columnId, workspaceId: columns.workspaceId })
+      .from(tasks)
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
+      .where(eq(tasks.id, update.id as number))
+      .limit(1);
+    if (!previous) return Response.json({ error: "Task not found." }, { status: 404 });
+
     const values: Partial<typeof tasks.$inferInsert> = {};
     if (update.title !== undefined) {
       if (typeof update.title !== "string" || !update.title.trim()) {
@@ -147,7 +158,7 @@ export async function PATCH(request: Request) {
       if (!Number.isSafeInteger(update.columnId) || (update.columnId as number) < 1) {
         return Response.json({ error: "Choose a valid destination column." }, { status: 400 });
       }
-      const [destination] = await getDb()
+      const [destination] = await db
         .select({ id: columns.id })
         .from(columns)
         .where(eq(columns.id, update.columnId as number))
@@ -165,7 +176,7 @@ export async function PATCH(request: Request) {
       }
       const assigneeId = typeof update.assigneeId === "string" ? update.assigneeId.trim() : null;
       const [assignee] = assigneeId
-        ? await getDb().select({ id: users.id, name: users.name, email: users.email }).from(users).where(eq(users.id, assigneeId)).limit(1)
+        ? await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(eq(users.id, assigneeId)).limit(1)
         : [];
       if (assigneeId && !assignee) {
         return Response.json({ error: "Assignee not found." }, { status: 404 });
@@ -187,12 +198,27 @@ export async function PATCH(request: Request) {
     }
     if (!Object.keys(values).length) return Response.json({ error: "No task fields to update." }, { status: 400 });
 
-    const [updated] = await getDb()
+    const [updated] = await db
       .update(tasks)
       .set(values)
       .where(eq(tasks.id, update.id as number))
       .returning();
     if (!updated) return Response.json({ error: "Task not found." }, { status: 404 });
+    const [destination] = await db
+      .select({ workspaceId: columns.workspaceId })
+      .from(columns)
+      .where(eq(columns.id, updated.columnId))
+      .limit(1);
+    const eventName = previous.columnId === updated.columnId ? "task:updated" : "task:moved";
+    const eventData = { task: updated, previousColumnId: previous.columnId };
+    await publishWorkspaceEvent(destination.workspaceId, eventName, eventData);
+    if (previous.workspaceId !== destination.workspaceId) {
+      await publishWorkspaceEvent(previous.workspaceId, eventName, {
+        id: updated.id,
+        previousColumnId: previous.columnId,
+        removed: true,
+      });
+    }
     revalidatePath("/");
     return Response.json({ task: updated });
   } catch (error) {
@@ -212,8 +238,17 @@ export async function DELETE(request: Request) {
     if (!Number.isSafeInteger(id) || id < 1) {
       return Response.json({ error: "A valid task id is required." }, { status: 400 });
     }
-    const [deleted] = await getDb().delete(tasks).where(eq(tasks.id, id)).returning({ id: tasks.id });
+    const db = getDb();
+    const [existing] = await db
+      .select({ id: tasks.id, columnId: tasks.columnId, workspaceId: columns.workspaceId })
+      .from(tasks)
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
+      .where(eq(tasks.id, id))
+      .limit(1);
+    if (!existing) return Response.json({ error: "Task not found." }, { status: 404 });
+    const [deleted] = await db.delete(tasks).where(eq(tasks.id, id)).returning({ id: tasks.id });
     if (!deleted) return Response.json({ error: "Task not found." }, { status: 404 });
+    await publishWorkspaceEvent(existing.workspaceId, "task:deleted", { id: deleted.id, columnId: existing.columnId });
     revalidatePath("/");
     return Response.json({ success: true });
   } catch (error) {

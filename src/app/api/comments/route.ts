@@ -1,8 +1,9 @@
 import { asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { apiError, parseId, requireUser } from "../_utils";
+import { publishWorkspaceEvent } from "../_pusher";
 import { getDb } from "@/app/db";
-import { commentAttachments, comments, tasks, users } from "@/app/db/schema";
+import { columns, commentAttachments, comments, tasks, users } from "@/app/db/schema";
 
 export async function GET(request: Request) {
   try {
@@ -13,7 +14,12 @@ export async function GET(request: Request) {
     if (!taskId) return Response.json({ error: "A valid task id is required." }, { status: 400 });
 
     const db = getDb();
-    const [task] = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    const [task] = await db
+      .select({ id: tasks.id, workspaceId: columns.workspaceId })
+      .from(tasks)
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
+      .where(eq(tasks.id, taskId))
+      .limit(1);
     if (!task) return Response.json({ error: "Task not found." }, { status: 404 });
 
     const result = await db
@@ -88,7 +94,12 @@ export async function POST(request: Request) {
     }
 
     const db = getDb();
-    const [task] = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    const [task] = await db
+      .select({ id: tasks.id, workspaceId: columns.workspaceId })
+      .from(tasks)
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
+      .where(eq(tasks.id, taskId))
+      .limit(1);
     if (!task) return Response.json({ error: "Task not found." }, { status: 404 });
 
     const [created] = await db
@@ -96,14 +107,16 @@ export async function POST(request: Request) {
       .values({ taskId, userId: user.id, content: content.trim() })
       .returning();
 
+    const comment = {
+      ...created,
+      userName: user.name ?? user.email ?? "Usuario",
+      userImage: user.image ?? null,
+      attachments: [],
+    };
+    await publishWorkspaceEvent(task.workspaceId, "comment:created", { comment });
     revalidatePath("/");
     return Response.json({
-      comment: {
-        ...created,
-        userName: user.name ?? user.email ?? "Usuario",
-        userImage: user.image ?? null,
-        attachments: [],
-      },
+      comment,
     }, { status: 201 });
   } catch (error) {
     return apiError(error);
@@ -126,8 +139,10 @@ export async function PATCH(request: Request) {
 
     const db = getDb();
     const [existing] = await db
-      .select({ userId: comments.userId })
+      .select({ userId: comments.userId, taskId: comments.taskId, workspaceId: columns.workspaceId })
       .from(comments)
+      .innerJoin(tasks, eq(comments.taskId, tasks.id))
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
       .where(eq(comments.id, id as number))
       .limit(1);
     if (!existing) return Response.json({ error: "Comment not found." }, { status: 404 });
@@ -140,6 +155,9 @@ export async function PATCH(request: Request) {
       .set({ content })
       .where(eq(comments.id, id as number))
       .returning();
+    await publishWorkspaceEvent(existing.workspaceId, "comment:updated", {
+      comment: { ...updated, taskId: existing.taskId },
+    });
     revalidatePath("/");
     return Response.json({ comment: updated });
   } catch (error) {
