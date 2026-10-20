@@ -848,12 +848,13 @@ export default function Home() {
   useEffect(() => {
     if (status !== "authenticated") return;
     let active = true;
-    request<{ profile: { settings: { navigationLabels: "icons" | "icons-and-text"; navigationOrder: string[]; theme: "system" | "light" | "dark"; sidebarColor: "indigo" | "slate" | "violet"; compactMode: boolean } } }>("/api/profile", { cache: "no-store" })
+    request<{ profile: { settings: { navigationLabels: "icons" | "icons-and-text"; navigationOrder: string[]; theme: "system" | "light" | "dark"; themeStyle: "aura" | "cyberpunk" | "forest" | "sunset" | "monochrome"; sidebarColor: "midnight" | "purple" | "space-blue" | "olive" | "pink"; compactMode: boolean } } }>("/api/profile", { cache: "no-store" })
       .then(({ profile }) => {
         if (!active) return;
         setNavigationLabels(profile.settings.navigationLabels);
         setNavigationOrder(profile.settings.navigationOrder);
         document.documentElement.dataset.theme = profile.settings.theme;
+        document.documentElement.dataset.palette = profile.settings.themeStyle;
         document.documentElement.dataset.sidebarColor = profile.settings.sidebarColor;
         document.documentElement.dataset.compact = String(profile.settings.compactMode);
       })

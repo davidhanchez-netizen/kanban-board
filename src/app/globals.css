@@ -105,14 +105,146 @@ html[data-theme="dark"] .kanban-app select {
   color: #e2e8f0;
 }
 
-html[data-sidebar-color="slate"] .kanban-app > aside {
-  background-color: #f1f5f9;
-}
-
-html[data-sidebar-color="violet"] .kanban-app > aside {
-  background-color: #faf5ff;
-}
-
 html[data-compact="true"] .kanban-app article {
   padding: 0.65rem;
+}
+
+.kanban-app {
+  --ui-accent: #4f46e5;
+  --ui-accent-hover: #4338ca;
+}
+
+html[data-palette="aura"] .kanban-app {
+  --ui-accent: #4f46e5;
+  --ui-accent-hover: #4338ca;
+}
+
+html[data-palette="cyberpunk"] .kanban-app {
+  --ui-accent: #d946ef;
+  --ui-accent-hover: #c026d3;
+  background-color: #11101a !important;
+  color: #f5f3ff;
+}
+
+html[data-palette="forest"] .kanban-app {
+  --ui-accent: #059669;
+  --ui-accent-hover: #047857;
+}
+
+html[data-palette="sunset"] .kanban-app {
+  --ui-accent: #ea580c;
+  --ui-accent-hover: #c2410c;
+}
+
+html[data-palette="monochrome"] .kanban-app {
+  --ui-accent: #374151;
+  --ui-accent-hover: #111827;
+}
+
+html[data-sidebar-color="midnight"] .kanban-app {
+  --sidebar-surface: #1e293b;
+  --header-surface: #f1f5f9;
+  --sidebar-accent: #cbd5e1;
+  --header-accent: #334155;
+}
+
+html[data-sidebar-color="purple"] .kanban-app {
+  --sidebar-surface: #f5f3ff;
+  --header-surface: #faf5ff;
+  --sidebar-accent: #7c3aed;
+  --header-accent: #6d28d9;
+}
+
+html[data-sidebar-color="space-blue"] .kanban-app {
+  --sidebar-surface: #eff6ff;
+  --header-surface: #f0f9ff;
+  --sidebar-accent: #0284c7;
+  --header-accent: #0369a1;
+}
+
+html[data-sidebar-color="olive"] .kanban-app {
+  --sidebar-surface: #f7fee7;
+  --header-surface: #f0fdf4;
+  --sidebar-accent: #65a30d;
+  --header-accent: #4d7c0f;
+}
+
+html[data-sidebar-color="pink"] .kanban-app {
+  --sidebar-surface: #fdf2f8;
+  --header-surface: #fff1f2;
+  --sidebar-accent: #db2777;
+  --header-accent: #be185d;
+}
+
+html[data-sidebar-color] .kanban-app > aside {
+  background-color: var(--sidebar-surface, #ffffff);
+}
+
+html[data-sidebar-color] .kanban-app > main > header {
+  background-color: var(--header-surface, #ffffff);
+  border-bottom-color: color-mix(in srgb, var(--header-accent) 20%, transparent);
+}
+
+html[data-sidebar-color] .kanban-app > aside nav button.bg-indigo-50 {
+  background-color: color-mix(in srgb, var(--sidebar-accent) 12%, white);
+  color: var(--sidebar-accent);
+}
+
+html[data-palette] .kanban-app .button-primary {
+  background-color: var(--ui-accent);
+}
+
+html[data-palette] .kanban-app .button-primary:hover {
+  background-color: var(--ui-accent-hover);
+}
+
+html[data-palette="cyberpunk"] .kanban-app .bg-white,
+html[data-palette="cyberpunk"] .kanban-app .bg-white\/90,
+html[data-palette="cyberpunk"] .kanban-app .bg-white\/55,
+html[data-palette="cyberpunk"] .kanban-app .bg-\[\#f7f8fc\],
+html[data-palette="cyberpunk"] .kanban-app .bg-\[\#f0f2f8\]\/75 {
+  background-color: #191725 !important;
+}
+
+html[data-palette="cyberpunk"] .kanban-app .text-slate-900,
+html[data-palette="cyberpunk"] .kanban-app .text-slate-800,
+html[data-palette="cyberpunk"] .kanban-app .text-slate-700,
+html[data-palette="cyberpunk"] .kanban-app .text-slate-600 {
+  color: #f5f3ff !important;
+}
+
+html[data-palette="cyberpunk"] .kanban-app [class*="border-slate-"] {
+  border-color: #393349 !important;
+}
+
+html[data-palette="cyberpunk"] .kanban-app input,
+html[data-palette="cyberpunk"] .kanban-app textarea,
+html[data-palette="cyberpunk"] .kanban-app select {
+  background-color: #191725;
+  color: #f5f3ff;
+}
+
+html[data-palette="cyberpunk"] .kanban-app .text-indigo-600,
+html[data-palette="cyberpunk"] .kanban-app .text-indigo-700 {
+  color: #f0abfc !important;
+}
+
+html[data-theme="dark"][data-sidebar-color="midnight"] .kanban-app > aside,
+html[data-theme="dark"][data-sidebar-color="midnight"] .kanban-app > main > header,
+html[data-palette="cyberpunk"][data-sidebar-color="midnight"] .kanban-app > aside,
+html[data-palette="cyberpunk"][data-sidebar-color="midnight"] .kanban-app > main > header {
+  background-color: #171c26 !important;
+}
+
+html[data-palette="forest"]:not([data-theme="dark"]) .kanban-app {
+  background-color: #f0fdf4 !important;
+}
+
+html[data-palette="sunset"]:not([data-theme="dark"]) .kanban-app {
+  background-color: #fff7ed !important;
+}
+
+html[data-palette="monochrome"] .kanban-app > aside,
+html[data-palette="monochrome"] .kanban-app > main > header {
+  filter: grayscale(1);
 }

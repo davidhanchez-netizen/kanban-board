@@ -12,7 +12,8 @@ const defaultSettings: UserSettings = {
   emailNotifications: false,
   doNotDisturb: false,
   theme: "system",
-  sidebarColor: "indigo",
+  themeStyle: "aura",
+  sidebarColor: "purple",
   language: "es",
   weekStartsOn: "monday",
   toastDuration: "normal",
@@ -26,31 +27,36 @@ const defaultSettings: UserSettings = {
   muteDueToday: false,
 };
 
-function isSettings(value: unknown): value is UserSettings {
-  if (!value || typeof value !== "object") return false;
-  const settings = value as Record<string, unknown>;
+function parseSettings(value: unknown): UserSettings | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Record<string, unknown>;
+  const legacyColor = source.sidebarColor === "indigo" || source.sidebarColor === "violet"
+    ? "purple"
+    : source.sidebarColor === "slate" ? "midnight" : source.sidebarColor;
+  const settings = { ...defaultSettings, ...source, sidebarColor: legacyColor } as Record<string, unknown>;
   return (
     typeof settings.browserNotifications === "boolean" &&
-    typeof settings.projectNotifications === "boolean" &&
-    typeof settings.emailNotifications === "boolean" &&
-    typeof settings.doNotDisturb === "boolean" &&
-    ["system", "light", "dark"].includes(String(settings.theme)) &&
-    ["indigo", "slate", "violet"].includes(String(settings.sidebarColor)) &&
-    ["es", "en"].includes(String(settings.language)) &&
-    ["monday", "sunday"].includes(String(settings.weekStartsOn)) &&
-    ["short", "normal", "long"].includes(String(settings.toastDuration)) &&
-    typeof settings.compactMode === "boolean" &&
-    typeof settings.colorBlindMode === "boolean" &&
-    typeof settings.showRowNumbers === "boolean" &&
-    ["icons", "icons-and-text"].includes(String(settings.navigationLabels)) &&
-    Array.isArray(settings.navigationOrder) &&
-    settings.navigationOrder.length === navigationItems.length &&
-    settings.navigationOrder.every((item) => typeof item === "string" && navigationItems.includes(item)) &&
-    new Set(settings.navigationOrder).size === navigationItems.length &&
-    typeof settings.extraCelebrations === "boolean" &&
-    typeof settings.recurringTasks === "boolean" &&
-    typeof settings.muteDueToday === "boolean"
-  );
+      typeof settings.projectNotifications === "boolean" &&
+      typeof settings.emailNotifications === "boolean" &&
+      typeof settings.doNotDisturb === "boolean" &&
+      ["system", "light", "dark"].includes(String(settings.theme)) &&
+      ["aura", "cyberpunk", "forest", "sunset", "monochrome"].includes(String(settings.themeStyle)) &&
+      ["midnight", "purple", "space-blue", "olive", "pink"].includes(String(settings.sidebarColor)) &&
+      ["es", "en"].includes(String(settings.language)) &&
+      ["monday", "sunday"].includes(String(settings.weekStartsOn)) &&
+      ["short", "normal", "long"].includes(String(settings.toastDuration)) &&
+      typeof settings.compactMode === "boolean" &&
+      typeof settings.colorBlindMode === "boolean" &&
+      typeof settings.showRowNumbers === "boolean" &&
+      ["icons", "icons-and-text"].includes(String(settings.navigationLabels)) &&
+      Array.isArray(settings.navigationOrder) &&
+      settings.navigationOrder.length === navigationItems.length &&
+      settings.navigationOrder.every((item) => typeof item === "string" && navigationItems.includes(item)) &&
+      new Set(settings.navigationOrder).size === navigationItems.length &&
+      typeof settings.extraCelebrations === "boolean" &&
+      typeof settings.recurringTasks === "boolean" &&
+      typeof settings.muteDueToday === "boolean"
+  ) ? settings as UserSettings : null;
 }
 
 export async function GET() {
@@ -81,7 +87,7 @@ export async function GET() {
     return Response.json({
       profile: {
         ...profile,
-        settings: profile.settings ?? defaultSettings,
+        settings: parseSettings(profile.settings) ?? defaultSettings,
       },
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -112,7 +118,8 @@ export async function PATCH(request: Request) {
     if (values.outOfOffice !== undefined && typeof values.outOfOffice !== "boolean") {
       return Response.json({ error: "Out-of-office must be a boolean." }, { status: 400 });
     }
-    if (values.settings !== undefined && !isSettings(values.settings)) {
+    const parsedSettings = values.settings === undefined ? undefined : parseSettings(values.settings);
+    if (values.settings !== undefined && !parsedSettings) {
       return Response.json({ error: "One or more settings are invalid." }, { status: 400 });
     }
     if (values.image !== undefined) {
@@ -139,6 +146,11 @@ export async function PATCH(request: Request) {
     }
 
     const db = getDb();
+    const [existingUser] = await db
+      .select({ name: users.name, image: users.image })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
     const userUpdate: Partial<typeof users.$inferInsert> = {};
     if (typeof values.name === "string") userUpdate.name = values.name.trim();
     if (values.image === null || typeof values.image === "string") userUpdate.image = values.image;
@@ -156,7 +168,7 @@ export async function PATCH(request: Request) {
     if (typeof values.department === "string") preferenceUpdate.department = values.department.trim() || null;
     if (typeof values.about === "string") preferenceUpdate.about = values.about.trim() || null;
     if (typeof values.outOfOffice === "boolean") preferenceUpdate.outOfOffice = values.outOfOffice;
-    if (isSettings(values.settings)) preferenceUpdate.settings = values.settings;
+    if (parsedSettings) preferenceUpdate.settings = parsedSettings;
     const [preference] = await db
       .insert(userPreferences)
       .values({ userId: user.id, ...preferenceUpdate })
@@ -168,17 +180,21 @@ export async function PATCH(request: Request) {
       .where(eq(users.id, user.id))
       .limit(1);
 
-    const workspaceIds = await db.select({ id: workspaces.id }).from(workspaces);
-    await Promise.all(workspaceIds.map(({ id }) =>
-      publishWorkspaceEvent(id, "profile:updated", {
-        user: {
-          id: user.id,
-          name: updatedUser.name,
-          image: updatedUser.image?.startsWith("data:") ? null : updatedUser.image,
-          imageStored: Boolean(updatedUser.image),
-        },
-      }),
-    ));
+    const nameChanged = userUpdate.name !== undefined && userUpdate.name !== existingUser?.name;
+    const imageChanged = userUpdate.image !== undefined && userUpdate.image !== existingUser?.image;
+    if (nameChanged || imageChanged) {
+      const workspaceIds = await db.select({ id: workspaces.id }).from(workspaces);
+      await Promise.all(workspaceIds.map(({ id }) =>
+        publishWorkspaceEvent(id, "profile:updated", {
+          user: {
+            id: user.id,
+            name: updatedUser.name,
+            image: updatedUser.image?.startsWith("data:") ? null : updatedUser.image,
+            imageStored: Boolean(updatedUser.image),
+          },
+        }),
+      ));
+    }
     revalidatePath("/");
     return Response.json({
       profile: {
@@ -190,7 +206,7 @@ export async function PATCH(request: Request) {
         department: preference.department,
         about: preference.about,
         outOfOffice: preference.outOfOffice,
-        settings: preference.settings ?? defaultSettings,
+        settings: parseSettings(preference.settings) ?? defaultSettings,
       },
     });
   } catch (error) {

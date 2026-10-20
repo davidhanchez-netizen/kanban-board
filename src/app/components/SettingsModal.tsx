@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 export type UserSettings = {
   browserNotifications: boolean;
@@ -9,7 +9,8 @@ export type UserSettings = {
   emailNotifications: boolean;
   doNotDisturb: boolean;
   theme: "system" | "light" | "dark";
-  sidebarColor: "indigo" | "slate" | "violet";
+  themeStyle: "aura" | "cyberpunk" | "forest" | "sunset" | "monochrome";
+  sidebarColor: "midnight" | "purple" | "space-blue" | "olive" | "pink";
   language: "es" | "en";
   weekStartsOn: "monday" | "sunday";
   toastDuration: "short" | "normal" | "long";
@@ -59,6 +60,19 @@ const navigationLabels: Record<string, string> = {
   knowledge: "Conocimientos",
   people: "Personas",
 };
+
+const visualThemes: {
+  id: UserSettings["themeStyle"];
+  name: string;
+  description: string;
+  swatches: [string, string, string];
+}[] = [
+  { id: "aura", name: "Aura / Índigo", description: "Índigo sereno con gradientes violeta.", swatches: ["#4338ca", "#818cf8", "#e0e7ff"] },
+  { id: "cyberpunk", name: "Cyberpunk / Neón", description: "Contraste oscuro, magenta y cian.", swatches: ["#d946ef", "#22d3ee", "#111827"] },
+  { id: "forest", name: "Bosque / Esmeralda", description: "Verdes mate inspirados en la naturaleza.", swatches: ["#059669", "#34d399", "#d1fae5"] },
+  { id: "sunset", name: "Atardecer / Cálido", description: "Coral, naranja y tonos terracota.", swatches: ["#ea580c", "#fb7185", "#ffedd5"] },
+  { id: "monochrome", name: "Mínimo / Monocromático", description: "Grises limpios de alto contraste.", swatches: ["#111827", "#6b7280", "#e5e7eb"] },
+];
 
 async function profileRequest<T>(init?: RequestInit): Promise<T> {
   const response = await fetch("/api/profile", {
@@ -135,6 +149,7 @@ export function SettingsModal({
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [avatarInputKey, setAvatarInputKey] = useState(0);
+  const savedSettings = useRef<UserSettings | null>(null);
   const orderedTabs = useMemo(() => tabs, []);
 
   useEffect(() => {
@@ -142,6 +157,7 @@ export function SettingsModal({
     profileRequest<{ profile: UserProfile }>()
       .then(({ profile: result }) => {
         if (!active) return;
+        savedSettings.current = result.settings;
         setProfile(result);
       })
       .catch((cause: unknown) => {
@@ -151,9 +167,19 @@ export function SettingsModal({
     return () => { active = false; };
   }, []);
 
+  useEffect(() => () => {
+    const settings = savedSettings.current;
+    if (!settings) return;
+    document.documentElement.dataset.theme = settings.theme;
+    document.documentElement.dataset.palette = settings.themeStyle;
+    document.documentElement.dataset.sidebarColor = settings.sidebarColor;
+    document.documentElement.dataset.compact = String(settings.compactMode);
+  }, []);
+
   useEffect(() => {
     if (!profile) return;
     document.documentElement.dataset.theme = profile.settings.theme;
+    document.documentElement.dataset.palette = profile.settings.themeStyle;
     document.documentElement.dataset.sidebarColor = profile.settings.sidebarColor;
     document.documentElement.dataset.compact = String(profile.settings.compactMode);
   }, [profile]);
@@ -224,6 +250,7 @@ export function SettingsModal({
           settings: profile.settings,
         }),
       });
+      savedSettings.current = result.profile.settings;
       setProfile(result.profile);
       onProfileUpdated({
         id: result.profile.id,
@@ -314,8 +341,42 @@ export function SettingsModal({
               </div>}
 
               {tab === "appearance" && <div className="grid gap-4 sm:grid-cols-2">
-                <SelectField label="Tema" value={profile.settings.theme} onChange={(value) => updateSetting("theme", value as UserSettings["theme"])} options={[["system", "Sincronizar con el sistema"], ["light", "Claro"], ["dark", "Oscuro"]]} />
-                <SelectField label="Color del menú" value={profile.settings.sidebarColor} onChange={(value) => updateSetting("sidebarColor", value as UserSettings["sidebarColor"])} options={[["indigo", "Índigo"], ["slate", "Gris"], ["violet", "Violeta"]]} />
+                <div className="sm:col-span-2">
+                  <h4 className="mb-3 text-sm font-semibold text-slate-800">Modo de color</h4>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {([
+                      ["light", "Claro", "☀"],
+                      ["dark", "Oscuro", "☾"],
+                      ["system", "Sincronizar con el sistema", "◐"],
+                    ] as const).map(([value, label, icon]) => <button key={value} type="button" aria-pressed={profile.settings.theme === value} onClick={() => updateSetting("theme", value)} className={`flex items-center gap-3 rounded-xl border p-3 text-left text-sm font-medium transition ${profile.settings.theme === value ? "border-indigo-500 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-100" : "border-slate-200 text-slate-700 hover:border-slate-300"}`}><span className="flex size-8 items-center justify-center rounded-lg bg-white text-base shadow-sm">{icon}</span>{label}</button>)}
+                  </div>
+                </div>
+                <div className="sm:col-span-2">
+                  <h4 className="mb-1 text-sm font-semibold text-slate-800">Temas y estilos</h4>
+                  <p className="mb-3 text-xs text-slate-500">Elige una paleta personal para esta cuenta; solo afecta tu navegador y perfil.</p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {visualThemes.map((theme) => <button key={theme.id} type="button" aria-pressed={profile.settings.themeStyle === theme.id} onClick={() => updateSetting("themeStyle", theme.id)} className={`rounded-xl border p-3 text-left transition ${profile.settings.themeStyle === theme.id ? "border-indigo-500 bg-indigo-50/60 ring-2 ring-indigo-100" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"}`}>
+                      <span className="mb-3 flex h-10 overflow-hidden rounded-lg border border-black/5">
+                        {theme.swatches.map((color) => <span key={color} className="flex-1" style={{ backgroundColor: color }} />)}
+                      </span>
+                      <span className="block text-xs font-semibold text-slate-800">{theme.name}</span>
+                      <span className="mt-1 block text-[11px] leading-4 text-slate-500">{theme.description}</span>
+                    </button>)}
+                  </div>
+                </div>
+                <div className="sm:col-span-2">
+                  <h4 className="mb-1 text-sm font-semibold text-slate-800">Acento del menú y encabezado</h4>
+                  <p className="mb-3 text-xs text-slate-500">Ajusta los acentos visuales de la interfaz en este dispositivo.</p>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {([
+                      ["midnight", "Oscuro profundo", "#1e293b"],
+                      ["purple", "Morado medianoche", "#6d28d9"],
+                      ["space-blue", "Azul espacial", "#0369a1"],
+                      ["olive", "Verde oliva", "#4d7c0f"],
+                      ["pink", "Rosa pastel", "#db2777"],
+                    ] as const).map(([value, label, color]) => <button key={value} type="button" aria-pressed={profile.settings.sidebarColor === value} onClick={() => updateSetting("sidebarColor", value)} className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-xs font-medium transition ${profile.settings.sidebarColor === value ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-100" : "border-slate-200 hover:border-slate-300"}`}><span className="size-5 rounded-full ring-2 ring-white shadow" style={{ backgroundColor: color }} />{label}</button>)}
+                  </div>
+                </div>
                 <SelectField label="Idioma" value={profile.settings.language} onChange={(value) => updateSetting("language", value as UserSettings["language"])} options={[["es", "Español"], ["en", "English"]]} />
                 <SelectField label="Primer día de la semana" value={profile.settings.weekStartsOn} onChange={(value) => updateSetting("weekStartsOn", value as UserSettings["weekStartsOn"])} options={[["monday", "Lunes"], ["sunday", "Domingo"]]} />
                 <SelectField label="Duración de avisos" value={profile.settings.toastDuration} onChange={(value) => updateSetting("toastDuration", value as UserSettings["toastDuration"])} options={[["short", "Corta"], ["normal", "Normal"], ["long", "Larga"]]} />

@@ -37,7 +37,7 @@ Instala dependencias y ejecuta `npm run dev`. Los usuarios inician sesión con G
 
 Las rutas de Auth.js están en `/api/auth/*`. `/api/columns`, `/api/tasks` y `/api/comments` exigen sesión. Los miembros pueden editar los detalles de las tareas, pero no reasignarlas; la eliminación de tareas y la lista de usuarios/asignables siguen siendo exclusivas de administradores.
 
-El menú de usuario incluye el perfil y los ajustes persistentes en `user_preferences`. Las fotos de perfil (máximo 1 MB) y los audios de pronunciación (máximo 3 MB) se guardan en Neon como Data URL. La bandeja muestra las tareas asignadas al usuario; no es todavía un sistema de notificaciones individuales. Slack/Teams, invitaciones, cierre de otras sesiones y eliminación de cuenta permanecen deshabilitados porque el proyecto no tiene esos servicios o flujos de seguridad.
+El menú de usuario incluye el perfil y los ajustes persistentes en `user_preferences`, vinculados únicamente al `user_id` de la sesión. Las preferencias de pantalla y apariencia nunca se publican por Pusher; solo se difunden cambios colaborativos del nombre o avatar del perfil. Los temas incluyen Aura/Índigo, Cyberpunk/Neón, Bosque/Esmeralda, Atardecer/Cálido y Mínimo/Monocromático, con acentos de navegación personales. Las fotos de perfil (máximo 1 MB) y los audios de pronunciación (máximo 3 MB) se guardan en Neon como Data URL. La bandeja muestra las tareas asignadas al usuario; no es todavía un sistema de notificaciones individuales. Slack/Teams, invitaciones, cierre de otras sesiones y eliminación de cuenta permanecen deshabilitados porque el proyecto no tiene esos servicios o flujos de seguridad.
 
 ### Actualizaciones en tiempo real
 

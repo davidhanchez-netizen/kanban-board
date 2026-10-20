@@ -30,7 +30,8 @@ export type UserSettings = {
   emailNotifications: boolean;
   doNotDisturb: boolean;
   theme: "system" | "light" | "dark";
-  sidebarColor: "indigo" | "slate" | "violet";
+  themeStyle: "aura" | "cyberpunk" | "forest" | "sunset" | "monochrome";
+  sidebarColor: "midnight" | "purple" | "space-blue" | "olive" | "pink";
   language: "es" | "en";
   weekStartsOn: "monday" | "sunday";
   toastDuration: "short" | "normal" | "long";
