@@ -145,6 +145,7 @@ html[data-sidebar-color="midnight"] .kanban-app {
   --sidebar-surface: #1e293b;
   --header-surface: #f1f5f9;
   --sidebar-accent: #cbd5e1;
+  --sidebar-active-foreground: #f8fafc;
   --header-accent: #334155;
 }
 
@@ -152,6 +153,7 @@ html[data-sidebar-color="purple"] .kanban-app {
   --sidebar-surface: #f5f3ff;
   --header-surface: #faf5ff;
   --sidebar-accent: #7c3aed;
+  --sidebar-active-foreground: #5b21b6;
   --header-accent: #6d28d9;
 }
 
@@ -159,6 +161,7 @@ html[data-sidebar-color="space-blue"] .kanban-app {
   --sidebar-surface: #eff6ff;
   --header-surface: #f0f9ff;
   --sidebar-accent: #0284c7;
+  --sidebar-active-foreground: #075985;
   --header-accent: #0369a1;
 }
 
@@ -166,6 +169,7 @@ html[data-sidebar-color="olive"] .kanban-app {
   --sidebar-surface: #f7fee7;
   --header-surface: #f0fdf4;
   --sidebar-accent: #65a30d;
+  --sidebar-active-foreground: #365314;
   --header-accent: #4d7c0f;
 }
 
@@ -173,6 +177,7 @@ html[data-sidebar-color="pink"] .kanban-app {
   --sidebar-surface: #fdf2f8;
   --header-surface: #fff1f2;
   --sidebar-accent: #db2777;
+  --sidebar-active-foreground: #9d174d;
   --header-accent: #be185d;
 }
 
@@ -405,4 +410,122 @@ html[data-color-blind="true"] .kanban-app .priority-medium {
 
 html[data-color-blind="true"] .kanban-app .priority-low {
   border: 1px solid currentColor;
+}
+
+.kanban-app > aside .sidebar-nav-item {
+  color: #475569;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.kanban-app > aside .sidebar-nav-item:hover {
+  background-color: #f1f5f9;
+}
+
+.kanban-app > aside .sidebar-nav-item-active {
+  background-color: #eef2ff;
+  color: #3730a3;
+}
+
+.kanban-app > aside .sidebar-nav-count,
+.kanban-app > aside .sidebar-workspace-menu-button {
+  color: #475569;
+}
+
+.kanban-app > aside .sidebar-nav-heading {
+  color: #475569;
+}
+
+.kanban-app > aside .sidebar-nav-create-button {
+  color: #475569;
+}
+
+.kanban-app > aside .sidebar-nav-create-button:hover,
+.kanban-app > aside .sidebar-profile-button:hover {
+  background-color: #f1f5f9;
+}
+
+html[data-sidebar-color] .kanban-app > aside .sidebar-nav-item-active {
+  background-color: color-mix(in srgb, var(--sidebar-accent) 12%, var(--sidebar-surface));
+  color: var(--sidebar-active-foreground);
+}
+
+html[data-sidebar-color] .kanban-app > aside .sidebar-nav-item:hover {
+  background-color: color-mix(in srgb, var(--sidebar-accent) 6%, var(--sidebar-surface));
+}
+
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-nav-item:not(.sidebar-nav-item-active),
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-nav-count,
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-workspace-menu-button,
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-nav-heading,
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-nav-create-button {
+  color: #e2e8f0;
+}
+
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-nav-item:hover,
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-nav-item-active,
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-nav-create-button:hover,
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-profile-button:hover {
+  background-color: rgb(255 255 255 / 10%);
+}
+
+html[data-sidebar-color="midnight"] .kanban-app > aside .sidebar-nav-item-active {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-item,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-item {
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-item:hover,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-item:hover,
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-create-button:hover,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-create-button:hover,
+html[data-theme="dark"] .kanban-app > aside .sidebar-profile-button:hover,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-profile-button:hover {
+  background-color: rgb(255 255 255 / 5%);
+}
+
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-item-active,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-item-active {
+  background-color: rgb(255 255 255 / 10%);
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-count,
+html[data-theme="dark"] .kanban-app > aside .sidebar-workspace-menu-button,
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-heading,
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-create-button,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-count,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-workspace-menu-button,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-heading,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-create-button {
+  color: #cbd5e1;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-item {
+    color: #e2e8f0;
+  }
+
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-item:hover {
+    background-color: rgb(255 255 255 / 5%);
+  }
+
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-create-button:hover,
+  html[data-theme="system"] .kanban-app > aside .sidebar-profile-button:hover {
+    background-color: rgb(255 255 255 / 5%);
+  }
+
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-item-active {
+    background-color: rgb(255 255 255 / 10%);
+    color: #f8fafc;
+  }
+
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-count,
+  html[data-theme="system"] .kanban-app > aside .sidebar-workspace-menu-button,
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-heading,
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-create-button {
+    color: #cbd5e1;
+  }
 }

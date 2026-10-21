@@ -1357,17 +1357,17 @@ export default function Home() {
         </div>
 
         <nav aria-label="Navegación principal" className="mb-6 space-y-1">
-          <button type="button" onClick={() => { setView("dashboard"); setMineOnly(false); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium ${view === "dashboard" ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}><Icon name="chart" size={17} />{navigationLabels === "icons-and-text" && "Inicio"}</button>
-          <button type="button" onClick={() => { setView("inbox"); setMineOnly(false); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium ${view === "inbox" ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}><Icon name="inbox" size={17} />{navigationLabels === "icons-and-text" && "Bandeja de entrada"}</button>
-          <button type="button" onClick={() => { setView("board"); setMineOnly((value) => !value); }} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium ${mineOnly ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}><Icon name="check" size={17} />{navigationLabels === "icons-and-text" && "Mis tareas"}<span className="ml-auto text-[10px] text-slate-400">{workspaceTasks.filter((task) => task.assigneeId === currentUserId).length}</span></button>
+          <button type="button" onClick={() => { setView("dashboard"); setMineOnly(false); }} className={`sidebar-nav-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium ${view === "dashboard" ? "sidebar-nav-item-active" : ""}`}><Icon name="chart" size={17} />{navigationLabels === "icons-and-text" && "Inicio"}</button>
+          <button type="button" onClick={() => { setView("inbox"); setMineOnly(false); }} className={`sidebar-nav-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium ${view === "inbox" ? "sidebar-nav-item-active" : ""}`}><Icon name="inbox" size={17} />{navigationLabels === "icons-and-text" && "Bandeja de entrada"}</button>
+          <button type="button" onClick={() => { setView("board"); setMineOnly((value) => !value); }} className={`sidebar-nav-item flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium ${mineOnly ? "sidebar-nav-item-active" : ""}`}><Icon name="check" size={17} />{navigationLabels === "icons-and-text" && "Mis tareas"}<span className="sidebar-nav-count ml-auto text-[10px]">{workspaceTasks.filter((task) => task.assigneeId === currentUserId).length}</span></button>
         </nav>
 
         <nav aria-label="Secciones de trabajo" className="space-y-4 overflow-y-auto">
           {navigationOrder.map((item) => {
             if (item === "work") return <div key={item} className="px-2">
-              <div className="mb-3 flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-[.14em] text-slate-400">
+              <div className="sidebar-nav-heading mb-3 flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-[.14em]">
                 <span>{navigationLabels === "icons" ? "Espacios" : "Proyectos y espacios"}</span>
-                <button type="button" aria-label="Crear espacio de trabajo" onClick={() => setWorkspaceDialogOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-indigo-700"><Icon name="plus" size={15} /></button>
+                <button type="button" aria-label="Crear espacio de trabajo" onClick={() => setWorkspaceDialogOpen(true)} className="sidebar-nav-create-button rounded-md p-1"><Icon name="plus" size={15} /></button>
               </div>
               <div className="space-y-1">
                 {workspaces.map((workspace) => {
@@ -1380,17 +1380,17 @@ export default function Home() {
                         title={workspace.description || workspace.name}
                         aria-current={selected ? "true" : undefined}
                         onClick={() => selectWorkspace(workspace.id)}
-                        className={`flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${selected ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}
+                        className={`sidebar-nav-item flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${selected ? "sidebar-nav-item-active" : ""}`}
                       >
                         <span className="flex min-w-0 items-center gap-2 truncate">
                           {workspace.name === "Under Control"
                             ? <Image src="/logo.png" alt="" width={24} height={24} className="size-6 shrink-0 object-contain" />
-                            : <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-md text-sm" style={{ backgroundColor: `${workspace.color}20`, color: workspace.color }}>
+                            :                             <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-md text-sm" style={{ backgroundColor: `${workspace.color}20` }}>
                               {workspace.icon === "briefcase" ? <Icon name="briefcase" size={16} /> : workspace.icon}
                             </span>}
                           {navigationLabels === "icons-and-text" && <span className="min-w-0 truncate">{workspace.name}</span>}
                         </span>
-                        <span className="shrink-0 text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === workspace.id).length}</span>
+                        <span className="sidebar-nav-count shrink-0 text-[11px]">{columns.filter((column) => column.workspaceId === workspace.id).length}</span>
                       </button>
                       <button
                         type="button"
@@ -1401,7 +1401,7 @@ export default function Home() {
                           event.stopPropagation();
                           setWorkspaceMenuId((current) => current === workspace.id ? null : workspace.id);
                         }}
-                        className={`flex size-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition-opacity hover:bg-white/10 hover:text-slate-900 ${menuOpen ? "opacity-100" : "opacity-0 group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100"}`}
+                        className={`sidebar-workspace-menu-button flex size-6 shrink-0 items-center justify-center rounded-md transition-opacity hover:bg-white/10 ${menuOpen ? "opacity-100" : "opacity-0 group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100"}`}
                       >
                         <Icon name="more" size={16} />
                       </button>
@@ -1430,7 +1430,7 @@ export default function Home() {
             const labels: Record<string, string> = { agents: "Agentes", strategy: "Estrategia", knowledge: "Conocimientos", people: "Personas" };
             const icons: Record<string, string> = { agents: "✦", strategy: "↗", knowledge: "▤", people: "♙" };
             const active = view === item;
-            return <button key={item} type="button" title={labels[item] ?? item} onClick={() => { setView(item as FeatureView); setMineOnly(false); }} aria-current={active ? "page" : undefined} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] ${active ? "bg-indigo-50 font-semibold text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}><span className="w-[17px] text-center" aria-hidden="true">{icons[item] ?? "·"}</span>{navigationLabels === "icons-and-text" && (labels[item] ?? item)}</button>;
+            return <button key={item} type="button" title={labels[item] ?? item} onClick={() => { setView(item as FeatureView); setMineOnly(false); }} aria-current={active ? "page" : undefined} className={`sidebar-nav-item flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] ${active ? "sidebar-nav-item-active font-semibold" : ""}`}><span className="w-[17px] text-center" aria-hidden="true">{icons[item] ?? "·"}</span>{navigationLabels === "icons-and-text" && (labels[item] ?? item)}</button>;
           })}
         </nav>
 
@@ -1440,7 +1440,7 @@ export default function Home() {
           <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/80"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${workspaceTasks.length ? completedCount / workspaceTasks.length * 100 : 0}%` }} /></div>
         </div>
         <div className="relative mt-4 border-t border-slate-100 px-1 pt-4" ref={sidebarProfileMenuRef}>
-          <button type="button" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)} className="flex w-full items-center gap-2 rounded-lg p-1 text-left hover:bg-slate-50">
+          <button type="button" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)} className="sidebar-profile-button flex w-full items-center gap-2 rounded-lg p-1 text-left">
             <UserAvatar image={session.user.image ?? null} name={displayName} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-800">{displayName}</span><span className="block text-[10px] text-slate-400">{session.user.email}</span></span><Icon name="chevron" size={14} />
           </button>
           {userMenuOpen && <div className="absolute bottom-14 left-0 z-40 w-60 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
