@@ -124,14 +124,9 @@ export async function POST(request: Request) {
     if (assigneeIds === null) return Response.json({ error: "Choose up to 20 valid assignees." }, { status: 400 });
 
     const db = getDb();
-    if (assigneeIds !== undefined && user.role !== "ADMIN") {
-      return Response.json({ error: "Only administrators can assign task members." }, { status: 403 });
-    }
-    const assigneeId = user.role === "ADMIN"
-      ? assigneeIds !== undefined
-        ? assigneeIds[0] ?? null
-        : typeof task.assigneeId === "string" ? task.assigneeId.trim() : null
-      : user.id;
+    const assigneeId = assigneeIds !== undefined
+      ? assigneeIds[0] ?? null
+      : typeof task.assigneeId === "string" ? task.assigneeId.trim() : user.id;
     const finalAssigneeIds = assigneeIds ?? (assigneeId ? [assigneeId] : []);
     const matchedAssignees = finalAssigneeIds.length
       ? await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(inArray(users.id, finalAssigneeIds))
@@ -204,11 +199,6 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "Task id and update fields are required." }, { status: 400 });
     }
     const update = body as Record<string, unknown>;
-    const isAdmin = user.role === "ADMIN";
-    const memberFields = new Set(["id", "title", "description", "priority", "columnId", "completed", "dueDate"]);
-    if (!isAdmin && Object.keys(update).some((key) => !memberFields.has(key))) {
-      return Response.json({ error: "Members can edit task details but cannot reassign tasks." }, { status: 403 });
-    }
     if (!Number.isSafeInteger(update.id) || (update.id as number) < 1) {
       return Response.json({ error: "A valid task id is required." }, { status: 400 });
     }
@@ -240,9 +230,6 @@ export async function PATCH(request: Request) {
         ? update.assigneeIds as string[]
         : null;
     if (assigneeIds === null) return Response.json({ error: "Choose up to 20 valid assignees." }, { status: 400 });
-    if (assigneeIds !== undefined && !isAdmin) {
-      return Response.json({ error: "Only administrators can assign task members." }, { status: 403 });
-    }
     if (update.title !== undefined) {
       if (typeof update.title !== "string" || !update.title.trim() || update.title.trim().length > 180) {
         return Response.json({ error: "A task title of up to 180 characters is required." }, { status: 400 });

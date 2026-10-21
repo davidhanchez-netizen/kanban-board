@@ -3,6 +3,7 @@ import Google from "next-auth/providers/google";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/app/db";
+import { ensureDefaultWorkspaceMembership } from "@/app/db/default-workspace";
 import { accounts, sessions, users, verificationTokens, workspaceInvitations, workspaceMembers } from "@/app/db/schema";
 import { publishWorkspaceEvent } from "@/app/api/_pusher";
 
@@ -65,6 +66,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!userId || !userEmail) return;
       const email = userEmail.trim().toLowerCase();
       const db = getDb();
+      await ensureDefaultWorkspaceMembership(userId);
       const invitations = await db.select({ workspaceId: workspaceInvitations.workspaceId })
         .from(workspaceInvitations)
         .where(sql`lower(${workspaceInvitations.email}) = ${email}`);

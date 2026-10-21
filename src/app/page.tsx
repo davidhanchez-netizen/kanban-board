@@ -109,20 +109,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return result;
 }
 
-async function loadBoardData(isAdmin: boolean) {
-  const [columnResult, taskResult, workspaceResult, userResult, mentionResult] = await Promise.all([
+async function loadBoardData() {
+  const [columnResult, taskResult, workspaceResult, mentionResult] = await Promise.all([
     request<{ columns: Column[] }>("/api/columns", { cache: "no-store" }),
     request<{ tasks: Task[] }>("/api/tasks", { cache: "no-store" }),
     request<{ workspaces: Workspace[] }>("/api/workspaces", { cache: "no-store" }),
-    isAdmin
-      ? request<{ users: UserOption[] }>("/api/users", { cache: "no-store" })
-      : Promise.resolve({ users: [] as UserOption[] }),
     request<{ members: MentionOption[] }>("/api/mentions", { cache: "no-store" }),
   ]);
   return {
     columns: columnResult.columns,
     tasks: taskResult.tasks,
-    users: userResult.users,
+    users: [],
     workspaces: workspaceResult.workspaces,
     mentions: mentionResult.members,
   };
@@ -266,31 +263,27 @@ function TaskModal({
               {(["high", "medium", "low"] as Priority[]).map((priority) => <option key={priority} value={priority}>{priorityLabels[priority]}</option>)}
             </select>
           </Field>
-          {isAdmin ? (
-            <Field label="Participantes">
-              <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                {users.map((member) => (
-                  <label key={member.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50">
-                    <input
-                      type="checkbox"
-                      checked={draft.assigneeIds.includes(member.id)}
-                      onChange={(event) => setDraft({
-                        ...draft,
-                        assigneeIds: event.target.checked
-                          ? [...draft.assigneeIds, member.id]
-                          : draft.assigneeIds.filter((id) => id !== member.id),
-                      })}
-                      className="size-4 accent-indigo-600"
-                    />
-                    {member.name ?? member.email ?? "Usuario"} <span className="text-slate-400">({member.role === "ADMIN" ? "Admin" : "Miembro"})</span>
-                  </label>
-                ))}
-                {!users.length && <p className="px-2 py-1 text-xs text-slate-400">No hay colaboradores disponibles.</p>}
-              </div>
-            </Field>
-          ) : (
-            <Field label="Asignada a"><p className="text-sm text-slate-600">{task?.assigneeName ?? "Tú"}</p></Field>
-          )}
+          <Field label="Participantes">
+            <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+              {users.map((member) => (
+                <label key={member.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={draft.assigneeIds.includes(member.id)}
+                    onChange={(event) => setDraft({
+                      ...draft,
+                      assigneeIds: event.target.checked
+                        ? [...draft.assigneeIds, member.id]
+                        : draft.assigneeIds.filter((id) => id !== member.id),
+                    })}
+                    className="size-4 accent-indigo-600"
+                  />
+                  {member.name ?? member.email ?? "Usuario"} <span className="text-slate-400">({member.role === "ADMIN" ? "Admin" : "Miembro"})</span>
+                </label>
+              ))}
+              {!users.length && <p className="px-2 py-1 text-xs text-slate-400">No hay colaboradores disponibles.</p>}
+            </div>
+          </Field>
           <Field label="Fecha límite">
             <input type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} className="form-control" />
           </Field>
@@ -997,7 +990,7 @@ export default function Home() {
   useEffect(() => {
     if (status !== "authenticated") return;
     let active = true;
-    loadBoardData(isAdmin)
+    loadBoardData()
       .then((data) => {
         if (!active) return;
         applyBoardData(data);
@@ -1010,7 +1003,22 @@ export default function Home() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [status, isAdmin, applyBoardData]);
+  }, [status, applyBoardData]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !workspaceId) return;
+    let active = true;
+    request<{ users: UserOption[] }>(`/api/users?workspaceId=${workspaceId}`, { cache: "no-store" })
+      .then(({ users: workspaceUsers }) => {
+        if (!active) return;
+        setUsers(workspaceUsers);
+        setError("");
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : "No se pudo cargar la lista de colaboradores.");
+      });
+    return () => { active = false; };
+  }, [status, workspaceId]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -1186,13 +1194,11 @@ export default function Home() {
             .catch((cause: unknown) => {
               if (active) setError(cause instanceof Error ? cause.message : "No se pudo actualizar la lista de espacios.");
             });
-          if (isAdmin) {
-            request<{ users: UserOption[] }>("/api/users", { cache: "no-store" })
-              .then(({ users: updatedUsers }) => { if (active) setUsers(updatedUsers); })
-              .catch((cause: unknown) => {
-                if (active) setError(cause instanceof Error ? cause.message : "No se pudo actualizar la lista de colaboradores.");
-              });
-          }
+          request<{ users: UserOption[] }>(`/api/users?workspaceId=${workspaceId}`, { cache: "no-store" })
+            .then(({ users: updatedUsers }) => { if (active) setUsers(updatedUsers); })
+            .catch((cause: unknown) => {
+              if (active) setError(cause instanceof Error ? cause.message : "No se pudo actualizar la lista de colaboradores.");
+            });
           request<{ members: MentionOption[] }>("/api/mentions", { cache: "no-store" })
             .then(({ members }) => { if (active) setMentionUsers(members); })
             .catch((cause: unknown) => {
@@ -1215,7 +1221,7 @@ export default function Home() {
         client.disconnect();
       }
     };
-  }, [status, workspaceId, currentUserId, isAdmin]);
+  }, [status, workspaceId, currentUserId]);
 
   async function mutate<T>(url: string, init?: RequestInit): Promise<T | null> {
     setSaving(true);
@@ -1261,11 +1267,9 @@ export default function Home() {
       priority: draft.priority,
       columnId: Number(draft.columnId),
       assignee: selectedAssignee?.name ?? selectedAssignee?.email ?? existingTask?.assignee ?? displayName,
-      assigneeId: isAdmin ? selectedAssignee?.id ?? null : currentUserId ?? null,
-      assigneeName: selectedAssignee?.name ?? selectedAssignee?.email ?? (isAdmin ? existingTask?.assigneeName : displayName) ?? displayName,
-      assignees: isAdmin
-        ? selectedAssignees.map((member) => ({ id: member.id, name: member.name ?? member.email ?? "Usuario", image: member.image }))
-        : existingTask?.assignees ?? [],
+      assigneeId: selectedAssignee?.id ?? null,
+      assigneeName: selectedAssignee?.name ?? selectedAssignee?.email ?? existingTask?.assigneeName ?? displayName,
+      assignees: selectedAssignees.map((member) => ({ id: member.id, name: member.name ?? member.email ?? "Usuario", image: member.image })),
       completed: draft.completed,
       dueDate: draft.dueDate || null,
       createdAt: existingTask?.createdAt ?? new Date().toISOString(),
@@ -1281,7 +1285,7 @@ export default function Home() {
         description: draft.description,
         priority: draft.priority,
         columnId: Number(draft.columnId),
-        ...(isAdmin ? { assigneeIds: draft.assigneeIds } : {}),
+        assigneeIds: draft.assigneeIds,
         dueDate: draft.dueDate || null,
         ...(id ? { completed: draft.completed } : {}),
       }),

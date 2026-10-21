@@ -35,6 +35,8 @@ Para añadir nombre, descripción, icono y color a los espacios existentes, ejec
 
 Para habilitar proyectos privados, colaboradores e invitaciones pendientes, múltiples asignados, subtareas y eventos de actividad, ejecuta una sola vez [`drizzle/0007_project_management.sql`](./drizzle/0007_project_management.sql) después de las migraciones anteriores. La migración conserva los proyectos existentes como públicos, copia las asignaciones actuales a la nueva relación múltiple y añade invitaciones pendientes, subtareas y eventos al historial de comentarios.
 
+Para establecer el workspace principal para las cuentas existentes, ejecuta una sola vez [`drizzle/0008_default_workspace_memberships.sql`](./drizzle/0008_default_workspace_memberships.sql) después de `0007`. Las cuentas nuevas se agregan automáticamente al workspace público principal al iniciar sesión por primera vez.
+
 Las tareas previas sin `assignee_id` siguen visibles para los usuarios con acceso al proyecto, pero no se podrán asignar automáticamente a miembros hasta que un administrador las asigne. Los proyectos públicos siguen visibles para usuarios autenticados; los privados se muestran solo a su creador y colaboradores. Las operaciones de escritura y la autorización del canal en tiempo real también se validan en servidor.
 
 ### 3. Iniciar y comprobar
