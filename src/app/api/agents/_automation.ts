@@ -5,9 +5,12 @@ import {
   agentActivity,
   columns,
   tasks,
+  taskAssignees,
   userPreferences,
   users,
   workspaceAgents,
+  workspaceMembers,
+  workspaces,
   type Task,
 } from "@/app/db/schema";
 
@@ -44,6 +47,15 @@ export async function runTaskAutomations(
   let addedActivity = false;
 
   if (enabled.has("auto_assign") && !currentTask.assigneeId && !currentTask.completed) {
+    const [workspace] = await db.select({ isPrivate: workspaces.isPrivate, createdBy: workspaces.createdBy })
+      .from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1);
+    const projectMembers = workspace?.isPrivate
+      ? await db.select({ userId: workspaceMembers.userId }).from(workspaceMembers)
+        .where(eq(workspaceMembers.workspaceId, workspaceId))
+      : [];
+    const eligibleIds = workspace?.isPrivate
+      ? new Set([...projectMembers.map(({ userId }) => userId), ...(workspace.createdBy ? [workspace.createdBy] : [])])
+      : null;
     const candidates = await db.select({ id: users.id, name: users.name, email: users.email })
       .from(users)
       .leftJoin(userPreferences, eq(userPreferences.userId, users.id))
@@ -57,7 +69,7 @@ export async function runTaskAutomations(
     for (const row of assignedCounts) {
       if (row.assigneeId) counts.set(row.assigneeId, (counts.get(row.assigneeId) ?? 0) + 1);
     }
-    for (const candidate of candidates.sort((left, right) =>
+    for (const candidate of candidates.filter((member) => !eligibleIds || eligibleIds.has(member.id)).sort((left, right) =>
       (counts.get(left.id) ?? 0) - (counts.get(right.id) ?? 0) ||
       (left.name ?? left.email ?? "").localeCompare(right.name ?? right.email ?? ""),
     )) {
@@ -67,6 +79,7 @@ export async function runTaskAutomations(
         .returning();
       if (!assigned) break;
       currentTask = assigned;
+      await db.insert(taskAssignees).values({ taskId: assigned.id, userId: candidate.id }).onConflictDoNothing();
       await db.insert(agentActivity).values({
         workspaceId,
         agentKey: "auto_assign",

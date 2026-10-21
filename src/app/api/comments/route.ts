@@ -1,13 +1,13 @@
 import { asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { apiError, parseId, requireUser } from "../_utils";
+import { apiError, canAccessWorkspace, parseId, requireUser } from "../_utils";
 import { publishWorkspaceEvent } from "../_pusher";
 import { getDb } from "@/app/db";
 import { columns, commentAttachments, comments, tasks, users } from "@/app/db/schema";
 
 export async function GET(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
 
     const taskId = parseId(new URL(request.url).searchParams.get("taskId") ?? "");
@@ -21,6 +21,7 @@ export async function GET(request: Request) {
       .where(eq(tasks.id, taskId))
       .limit(1);
     if (!task) return Response.json({ error: "Task not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(task.workspaceId, user.id))) return Response.json({ error: "Task not found." }, { status: 404 });
 
     const result = await db
       .select({
@@ -28,6 +29,7 @@ export async function GET(request: Request) {
         taskId: comments.taskId,
         userId: comments.userId,
         content: comments.content,
+        isActivity: comments.isActivity,
         createdAt: comments.createdAt,
         userName: users.name,
         userEmail: users.email,
@@ -101,6 +103,7 @@ export async function POST(request: Request) {
       .where(eq(tasks.id, taskId))
       .limit(1);
     if (!task) return Response.json({ error: "Task not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(task.workspaceId, user.id))) return Response.json({ error: "Task not found." }, { status: 404 });
 
     const [created] = await db
       .insert(comments)
@@ -146,6 +149,7 @@ export async function PATCH(request: Request) {
       .where(eq(comments.id, id as number))
       .limit(1);
     if (!existing) return Response.json({ error: "Comment not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(existing.workspaceId, user.id))) return Response.json({ error: "Comment not found." }, { status: 404 });
     if (existing.userId !== user.id) {
       return Response.json({ error: "You can only edit your own comments." }, { status: 403 });
     }

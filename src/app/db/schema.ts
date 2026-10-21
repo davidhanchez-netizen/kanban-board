@@ -106,9 +106,39 @@ export const workspaces = pgTable("workspaces", {
   description: text("description").notNull().default(""),
   icon: text("icon").notNull().default("briefcase"),
   color: text("color").notNull().default("#4f46e5"),
+  isPrivate: boolean("is_private").notNull().default(false),
   createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const workspaceMembers = pgTable(
+  "workspace_members",
+  {
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (member) => [primaryKey({ columns: [member.workspaceId, member.userId] })],
+);
+
+export const workspaceInvitations = pgTable(
+  "workspace_invitations",
+  {
+    workspaceId: integer("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    invitedBy: text("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (invitation) => [primaryKey({ columns: [invitation.workspaceId, invitation.email] })],
+);
 
 export const workspaceAgents = pgTable(
   "workspace_agents",
@@ -188,6 +218,31 @@ export const tasks = pgTable("tasks", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const taskAssignees = pgTable(
+  "task_assignees",
+  {
+    taskId: integer("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (assignee) => [primaryKey({ columns: [assignee.taskId, assignee.userId] })],
+);
+
+export const subtasks = pgTable("subtasks", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id")
+    .notNull()
+    .references(() => tasks.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  completed: boolean("completed").notNull().default(false),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const comments = pgTable("comments", {
   id: serial("id").primaryKey(),
   taskId: integer("task_id")
@@ -197,6 +252,7 @@ export const comments = pgTable("comments", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
+  isActivity: boolean("is_activity").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

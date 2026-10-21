@@ -1,8 +1,8 @@
 import { count, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { apiError, parseId, requireUser } from "../../../_utils";
+import { apiError, canAccessWorkspace, parseId, requireUser } from "../../../_utils";
 import { getDb } from "@/app/db";
-import { commentAttachments, comments } from "@/app/db/schema";
+import { columns, commentAttachments, comments, tasks } from "@/app/db/schema";
 
 const allowedMimeTypes = new Set([
   "image/jpeg",
@@ -20,7 +20,7 @@ export async function POST(
   { params }: { params: Promise<{ commentId: string }> },
 ) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
 
     const { commentId: rawCommentId } = await params;
@@ -51,8 +51,14 @@ export async function POST(
     }
 
     const db = getDb();
-    const [comment] = await db.select({ id: comments.id }).from(comments).where(eq(comments.id, commentId)).limit(1);
+    const [comment] = await db.select({ id: comments.id, workspaceId: columns.workspaceId })
+      .from(comments)
+      .innerJoin(tasks, eq(comments.taskId, tasks.id))
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
+      .where(eq(comments.id, commentId))
+      .limit(1);
     if (!comment) return Response.json({ error: "Comment not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(comment.workspaceId, user.id))) return Response.json({ error: "Comment not found." }, { status: 404 });
     const [attachmentCount] = await db
       .select({ value: count() })
       .from(commentAttachments)

@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
 import { authorizeWorkspaceChannel } from "../../_pusher";
-import { apiError, requireUser } from "../../_utils";
+import { apiError, canAccessWorkspace, requireUser } from "../../_utils";
 import { getDb } from "@/app/db";
 import { workspaces } from "@/app/db/schema";
 
 export async function POST(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
 
     const formData = new URLSearchParams(await request.text());
@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       .where(eq(workspaces.id, workspaceId))
       .limit(1);
     if (!workspace) return Response.json({ error: "Workspace not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(workspaceId, user.id))) return Response.json({ error: "Workspace not found." }, { status: 404 });
 
     const authorization = authorizeWorkspaceChannel(socketId, channelName);
     if (!authorization) {

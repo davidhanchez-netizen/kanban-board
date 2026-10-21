@@ -1,9 +1,9 @@
 import { and, desc, eq, ilike, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { apiError, parseId, requireUser } from "../_utils";
+import { apiError, canAccessWorkspace, parseId, requireUser } from "../_utils";
 import { publishWorkspaceEvent } from "../_pusher";
 import { getDb } from "@/app/db";
-import { knowledgeArticles, users, workspaces } from "@/app/db/schema";
+import { knowledgeArticles, users } from "@/app/db/schema";
 
 type ArticleInput = {
   title?: unknown;
@@ -29,20 +29,14 @@ function parseArticle(input: ArticleInput) {
   };
 }
 
-async function validWorkspace(workspaceId: number) {
-  const [workspace] = await getDb().select({ id: workspaces.id }).from(workspaces)
-    .where(eq(workspaces.id, workspaceId)).limit(1);
-  return Boolean(workspace);
-}
-
 export async function GET(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
     const params = new URL(request.url).searchParams;
     const workspaceId = parseId(params.get("workspaceId") ?? "");
     if (!workspaceId) return Response.json({ error: "Choose a valid workspace." }, { status: 400 });
-    if (!(await validWorkspace(workspaceId))) return Response.json({ error: "Workspace not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(workspaceId, user.id))) return Response.json({ error: "Workspace not found." }, { status: 404 });
     const search = params.get("q")?.trim();
     const conditions = [eq(knowledgeArticles.workspaceId, workspaceId)];
     if (search) {
@@ -84,7 +78,7 @@ export async function POST(request: Request) {
     if (!body || typeof body !== "object") return Response.json({ error: "Article details are required." }, { status: 400 });
     const input = body as Record<string, unknown>;
     const workspaceId = parseId(String(input.workspaceId ?? ""));
-    if (!workspaceId || !(await validWorkspace(workspaceId))) return Response.json({ error: "Choose a valid workspace." }, { status: 400 });
+    if (!workspaceId || !(await canAccessWorkspace(workspaceId, user.id))) return Response.json({ error: "Choose a valid workspace." }, { status: 400 });
     const article = parseArticle(input);
     if (!article) return Response.json({ error: "Provide a valid title, Markdown content, category, and tags." }, { status: 400 });
     const [created] = await getDb().insert(knowledgeArticles)
@@ -100,7 +94,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
     const body: unknown = await request.json();
     if (!body || typeof body !== "object") return Response.json({ error: "Article update is required." }, { status: 400 });
@@ -109,6 +103,7 @@ export async function PATCH(request: Request) {
     if (!id) return Response.json({ error: "Choose a valid article." }, { status: 400 });
     const [existing] = await getDb().select().from(knowledgeArticles).where(eq(knowledgeArticles.id, id)).limit(1);
     if (!existing) return Response.json({ error: "Article not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(existing.workspaceId, user.id))) return Response.json({ error: "Article not found." }, { status: 404 });
     const article = parseArticle(input);
     if (!article) return Response.json({ error: "Provide a valid title, Markdown content, category, and tags." }, { status: 400 });
     const [updated] = await getDb().update(knowledgeArticles)
@@ -125,11 +120,16 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
     const id = parseId(new URL(request.url).searchParams.get("id") ?? "");
     if (!id) return Response.json({ error: "Choose a valid article." }, { status: 400 });
-    const [deleted] = await getDb().delete(knowledgeArticles)
+    const db = getDb();
+    const [existing] = await db.select({ workspaceId: knowledgeArticles.workspaceId })
+      .from(knowledgeArticles).where(eq(knowledgeArticles.id, id)).limit(1);
+    if (!existing) return Response.json({ error: "Article not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(existing.workspaceId, user.id))) return Response.json({ error: "Article not found." }, { status: 404 });
+    const [deleted] = await db.delete(knowledgeArticles)
       .where(eq(knowledgeArticles.id, id))
       .returning();
     if (!deleted) return Response.json({ error: "Article not found." }, { status: 404 });

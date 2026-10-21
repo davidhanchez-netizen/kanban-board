@@ -1,18 +1,20 @@
 import { asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { apiError, requireUser } from "../_utils";
+import { apiError, canAccessWorkspace, getAccessibleWorkspaceIds, requireUser } from "../_utils";
 import { publishWorkspaceEvent } from "../_pusher";
 import { getDb } from "@/app/db";
 import { columns, tasks, workspaces } from "@/app/db/schema";
 
 export async function GET() {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
 
     const db = getDb();
     const result = await db.select().from(columns).orderBy(asc(columns.position), asc(columns.id));
-    return Response.json({ columns: result });
+    const accessibleWorkspaceIds = await getAccessibleWorkspaceIds(user.id);
+    const visible = result.filter((column) => accessibleWorkspaceIds.has(column.workspaceId));
+    return Response.json({ columns: visible });
   } catch (error) {
     return apiError(error);
   }
@@ -20,7 +22,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
 
     const body: unknown = await request.json();
@@ -38,6 +40,7 @@ export async function POST(request: Request) {
     const db = getDb();
     const [workspace] = await db.select().from(workspaces).where(eq(workspaces.id, workspaceId as number)).limit(1);
     if (!workspace) return Response.json({ error: "Workspace not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(workspace.id, user.id))) return Response.json({ error: "Workspace not found." }, { status: 404 });
     const [created] = await db
       .insert(columns)
       .values({
@@ -58,7 +61,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
 
     const body: unknown = await request.json();
@@ -70,6 +73,10 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "A valid column id and name are required." }, { status: 400 });
     }
 
+    const [existing] = await getDb().select({ workspaceId: columns.workspaceId })
+      .from(columns).where(eq(columns.id, id as number)).limit(1);
+    if (!existing) return Response.json({ error: "Column not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(existing.workspaceId, user.id))) return Response.json({ error: "Column not found." }, { status: 404 });
     const [updated] = await getDb()
       .update(columns)
       .set({ name: name.trim() })
@@ -86,7 +93,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
 
     const { searchParams } = new URL(request.url);
@@ -102,6 +109,7 @@ export async function DELETE(request: Request) {
       .where(eq(columns.id, id))
       .limit(1);
     if (!existing) return Response.json({ error: "Column not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(existing.workspaceId, user.id))) return Response.json({ error: "Column not found." }, { status: 404 });
     const [existingTask] = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.columnId, id)).limit(1);
     if (existingTask) {
       return Response.json(

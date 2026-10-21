@@ -9,7 +9,6 @@ export async function GET() {
     if (response) return response;
     const forbidden = requireRole("ADMIN", user.role);
     if (forbidden) return forbidden;
-
     const result = await getDb()
       .select({
         id: users.id,

@@ -6,6 +6,9 @@ import Pusher from "pusher-js";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SettingsModal, type SettingsTab } from "@/app/components/SettingsModal";
 import { WorkspaceFeatureViews } from "@/app/components/WorkspaceFeatureViews";
+import { ActivityEntry } from "@/components/comments/ActivityEntry";
+import { ProjectOverview } from "@/components/projects/ProjectOverview";
+import { TaskSubtasks } from "@/components/projects/TaskSubtasks";
 
 type Priority = "high" | "medium" | "low";
 type Workspace = {
@@ -14,6 +17,11 @@ type Workspace = {
   description: string;
   icon: string;
   color: string;
+  isPrivate: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  memberIds: string[];
+  memberEmails: string[];
 };
 type View = "board" | "list" | "calendar" | "dashboard" | "inbox" | "agents" | "strategy" | "knowledge" | "people";
 type FeatureView = "agents" | "strategy" | "knowledge" | "people";
@@ -35,6 +43,7 @@ type Task = {
   assignee: string;
   assigneeId: string | null;
   assigneeName: string;
+  assignees: { id: string; name: string; image: string | null }[];
   completed: boolean;
   dueDate: string | null;
   createdAt: string;
@@ -48,6 +57,7 @@ type TaskComment = {
   createdAt: string;
   userName: string;
   userImage: string | null;
+  isActivity: boolean;
   attachments: CommentAttachment[];
 };
 
@@ -74,9 +84,13 @@ type TaskDraft = {
   description: string;
   priority: Priority;
   columnId: string;
-  assigneeId: string;
+  assigneeIds: string[];
   dueDate: string;
   completed: boolean;
+};
+
+type WorkspaceDraft = Pick<Workspace, "name" | "description" | "icon" | "color" | "isPrivate" | "memberIds"> & {
+  memberEmails: string[];
 };
 
 const priorityLabels: Record<Priority, string> = {
@@ -216,7 +230,7 @@ function TaskModal({
     description: task?.description ?? "",
     priority: task?.priority ?? "medium",
     columnId: String(task?.columnId ?? columns[0]?.id ?? ""),
-    assigneeId: task?.assigneeId ?? "",
+    assigneeIds: task?.assignees?.map((assignee) => assignee.id) ?? (task?.assigneeId ? [task.assigneeId] : []),
     dueDate: task?.dueDate ?? "",
     completed: task?.completed ?? false,
   }));
@@ -239,7 +253,7 @@ function TaskModal({
           <input autoFocus required maxLength={180} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="¿Qué hay que hacer?" className="form-control text-base font-medium" />
         </Field>
         <Field label="Descripción">
-          <textarea rows={3} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Añade contexto o próximos pasos..." className="form-control resize-y" />
+          <textarea rows={3} maxLength={5000} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Añade contexto o próximos pasos..." className="form-control resize-y" />
         </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Columna">
@@ -253,11 +267,26 @@ function TaskModal({
             </select>
           </Field>
           {isAdmin ? (
-            <Field label="Asignada a">
-              <select value={draft.assigneeId} onChange={(event) => setDraft({ ...draft, assigneeId: event.target.value })} className="form-control">
-                <option value="">Sin asignar</option>
-                {users.map((member) => <option key={member.id} value={member.id}>{member.name ?? member.email ?? "Usuario"} ({member.role === "ADMIN" ? "Admin" : "Miembro"})</option>)}
-              </select>
+            <Field label="Participantes">
+              <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                {users.map((member) => (
+                  <label key={member.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={draft.assigneeIds.includes(member.id)}
+                      onChange={(event) => setDraft({
+                        ...draft,
+                        assigneeIds: event.target.checked
+                          ? [...draft.assigneeIds, member.id]
+                          : draft.assigneeIds.filter((id) => id !== member.id),
+                      })}
+                      className="size-4 accent-indigo-600"
+                    />
+                    {member.name ?? member.email ?? "Usuario"} <span className="text-slate-400">({member.role === "ADMIN" ? "Admin" : "Miembro"})</span>
+                  </label>
+                ))}
+                {!users.length && <p className="px-2 py-1 text-xs text-slate-400">No hay colaboradores disponibles.</p>}
+              </div>
             </Field>
           ) : (
             <Field label="Asignada a"><p className="text-sm text-slate-600">{task?.assigneeName ?? "Tú"}</p></Field>
@@ -266,6 +295,7 @@ function TaskModal({
             <input type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.target.value })} className="form-control" />
           </Field>
         </div>
+        {task && <TaskSubtasks taskId={task.id} />}
         {task && <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={draft.completed} onChange={(event) => setDraft({ ...draft, completed: event.target.checked })} className="size-4 accent-indigo-600" />Marcar como completada</label>}
         <div className="flex items-center justify-between border-t border-slate-100 pt-4">
           {isAdmin && task && onDelete ? (
@@ -423,6 +453,7 @@ function TaskComments({
       createdAt: new Date().toISOString(),
       userName: author,
       userImage: authorImage,
+      isActivity: false,
       attachments: [],
     };
     setComments((current) => [...current, optimisticComment]);
@@ -519,7 +550,9 @@ function TaskComments({
         comments.length ? (
           <ol className="mt-4 max-h-64 space-y-4 overflow-y-auto">
             {comments.map((comment) => (
-              <li key={comment.id} className="flex gap-3">
+              comment.isActivity
+                ? <ActivityEntry key={comment.id} activity={comment} />
+                : <li key={comment.id} className="flex gap-3">
                 <UserAvatar image={comment.userImage} name={comment.userName} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -739,22 +772,38 @@ function ColumnModal({
 
 function WorkspaceModal({
   workspace,
+  users,
   saving,
   onClose,
   onSave,
 }: {
   workspace?: Workspace | null;
+  users: UserOption[];
   saving: boolean;
   onClose: () => void;
-  onSave: (values: Pick<Workspace, "name" | "description" | "icon" | "color">) => Promise<void>;
+  onSave: (values: WorkspaceDraft) => Promise<void>;
 }) {
   const [name, setName] = useState(workspace?.name ?? "");
   const [description, setDescription] = useState(workspace?.description ?? "");
   const [icon, setIcon] = useState(workspace?.icon ?? "briefcase");
   const [color, setColor] = useState(workspace?.color ?? "#4f46e5");
+  const [isPrivate, setIsPrivate] = useState(workspace?.isPrivate ?? false);
+  const [memberIds, setMemberIds] = useState<string[]>(workspace?.memberIds ?? []);
+  const [memberEmails, setMemberEmails] = useState(workspace?.memberEmails.join(", ") ?? "");
   return (
-    <Modal title={workspace ? "Editar espacio de trabajo" : "Crear espacio de trabajo"} subtitle={workspace ? "Actualiza el nombre y la apariencia del espacio." : "El nuevo espacio quedará disponible para todo el equipo."} onClose={onClose} wide>
-      <form onSubmit={async (event) => { event.preventDefault(); await onSave({ name: name.trim(), description: description.trim(), icon: icon.trim(), color }); }} className="space-y-4">
+    <Modal title={workspace ? "Editar proyecto" : "Crear nuevo proyecto"} subtitle={workspace ? "Actualiza los detalles y colaboradores." : "Define un espacio de trabajo para tu equipo."} onClose={onClose} wide>
+      <form onSubmit={async (event) => {
+        event.preventDefault();
+        await onSave({
+          name: name.trim(),
+          description: description.trim(),
+          icon: icon.trim(),
+          color,
+          isPrivate,
+          memberIds,
+          memberEmails: memberEmails.split(/[,\n;]/).map((email) => email.trim().toLocaleLowerCase()).filter(Boolean),
+        });
+      }} className="space-y-4">
         <Field label="Nombre del espacio">
           <input autoFocus required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="Ej. Under Control" className="form-control" />
         </Field>
@@ -771,10 +820,38 @@ function WorkspaceModal({
               <span className="text-xs font-medium uppercase text-slate-600">{color}</span>
             </div>
           </Field>
+          <Field label="Privacidad">
+            <select value={isPrivate ? "private" : "public"} onChange={(event) => setIsPrivate(event.target.value === "private")} className="form-control">
+              <option value="public">Público · visible para el equipo</option>
+              <option value="private">Privado · solo colaboradores</option>
+            </select>
+          </Field>
         </div>
+        <Field label="Colaboradores existentes">
+          <div className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+            {users.map((member) => (
+              <label key={member.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={memberIds.includes(member.id)}
+                  onChange={(event) => setMemberIds((current) => event.target.checked
+                    ? [...current, member.id]
+                    : current.filter((id) => id !== member.id))}
+                  className="size-4 accent-indigo-600"
+                />
+                {member.name ?? member.email ?? "Usuario"}{member.email ? ` · ${member.email}` : ""}
+              </label>
+            ))}
+            {!users.length && <p className="px-2 py-1 text-xs text-slate-400">No hay colaboradores registrados.</p>}
+          </div>
+        </Field>
+        <Field label="Invitar por correo">
+          <input type="text" value={memberEmails} onChange={(event) => setMemberEmails(event.target.value)} placeholder="nombre@empresa.com, otra@empresa.com" className="form-control" />
+          <span className="text-[10px] text-slate-400">El acceso se activa cuando esa persona inicia sesión; no se envía un correo automáticamente.</span>
+        </Field>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="button-secondary">Cancelar</button>
-          <button type="submit" disabled={saving || !name.trim() || !icon.trim()} className="button-primary">{saving ? "Guardando..." : workspace ? "Guardar cambios" : "Crear espacio"}</button>
+          <button type="submit" disabled={saving || !name.trim() || !icon.trim()} className="button-primary">{saving ? "Guardando..." : workspace ? "Guardar cambios" : "Crear proyecto"}</button>
         </div>
       </form>
     </Modal>
@@ -782,7 +859,7 @@ function WorkspaceModal({
 }
 
 function PriorityPill({ priority }: { priority: Priority }) {
-  const color = priority === "high" ? "bg-rose-50 text-rose-700 ring-rose-200" : priority === "medium" ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  const color = priority === "high" ? "bg-rose-50 text-rose-700 ring-rose-200" : priority === "medium" ? "bg-amber-50 text-amber-700 ring-amber-200" : "bg-sky-50 text-sky-700 ring-sky-200";
   return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${color}`}><span className={`size-1.5 rounded-full bg-current priority-${priority}`} />{priorityLabels[priority]}</span>;
 }
 
@@ -801,6 +878,42 @@ function UserAvatar({ image, name }: { image: string | null; name: string }) {
   ) : (
     <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[11px] font-bold text-indigo-700">
       {initials(name)}
+    </span>
+  );
+}
+
+function AssigneeAvatars({ task }: { task: Task }) {
+  const assignees = task.assignees ?? [];
+  if (!assignees.length) {
+    return <span title={`Sin asignar · ${task.assigneeName}`} className="flex size-6 items-center justify-center rounded-full bg-slate-100 text-[9px] font-bold text-slate-500">{initials(task.assigneeName)}</span>;
+  }
+  return (
+    <span className="flex -space-x-1.5" aria-label={`Asignados: ${assignees.map((person) => person.name).join(", ")}`}>
+      {assignees.slice(0, 4).map((person) => (
+        person.image
+          ? <Image key={person.id} src={person.image} alt={person.name} title={person.name} width={24} height={24} unoptimized className="size-6 rounded-full border-2 border-white object-cover" />
+          : <span key={person.id} title={person.name} className="flex size-6 items-center justify-center rounded-full border-2 border-white bg-indigo-50 text-[8px] font-bold text-indigo-600">{initials(person.name)}</span>
+      ))}
+      {assignees.length > 4 && <span className="flex size-6 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-[8px] font-semibold text-slate-600">+{assignees.length - 4}</span>}
+    </span>
+  );
+}
+
+function TaskDueDate({ task, showCreatedDate = false }: { task: Task; showCreatedDate?: boolean }) {
+  const date = task.dueDate ?? (showCreatedDate ? task.createdAt.slice(0, 10) : null);
+  if (!date) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = Boolean(task.dueDate && !task.completed && date < today);
+  const dueToday = Boolean(task.dueDate && !task.completed && date === today);
+  const tone = overdue
+    ? "bg-rose-50 text-rose-700"
+    : dueToday
+      ? "bg-amber-50 text-amber-700"
+      : "text-slate-400";
+  return (
+    <span title={overdue ? "Fecha límite vencida" : dueToday ? "Vence hoy" : task.dueDate ? "Fecha límite" : "Fecha de creación"}
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] ${tone}`}>
+      {new Date(`${date}T00:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
     </span>
   );
 }
@@ -974,6 +1087,8 @@ export default function Home() {
           const task = payload.task;
           if (!task || !Number.isSafeInteger(task.id)) return;
           const previousTask = tasksRef.current.find((item) => item.id === task.id);
+          const taskAssignees = task.assignees ?? previousTask?.assignees ??
+            (task.assigneeId ? [{ id: task.assigneeId, name: task.assigneeName ?? task.assignee ?? "Usuario", image: null }] : []);
           const notificationSettings = notificationSettingsRef.current;
           if (
             task.assigneeId === currentUserId &&
@@ -991,13 +1106,17 @@ export default function Home() {
           }
           setTasks((current) => {
             const existing = current.find((item) => item.id === task.id);
-            const nextTask = { ...task, assigneeName: task.assigneeName ?? task.assignee ?? existing?.assigneeName ?? "Usuario" };
+              const nextTask = {
+                ...task,
+                assigneeName: task.assigneeName ?? task.assignee ?? existing?.assigneeName ?? "Usuario",
+                assignees: taskAssignees,
+              };
             return existing
               ? current.map((item) => item.id === task.id ? nextTask : item)
               : [...current, nextTask];
           });
           setTaskDialog((current) => current.task?.id === task.id
-            ? { ...current, task: { ...task, assigneeName: task.assigneeName ?? task.assignee ?? current.task.assigneeName } }
+            ? { ...current, task: { ...task, assigneeName: task.assigneeName ?? task.assignee ?? current.task.assigneeName, assignees: taskAssignees } }
             : current);
         };
         const removeTask = (payload: { id?: number }) => {
@@ -1067,6 +1186,18 @@ export default function Home() {
             .catch((cause: unknown) => {
               if (active) setError(cause instanceof Error ? cause.message : "No se pudo actualizar la lista de espacios.");
             });
+          if (isAdmin) {
+            request<{ users: UserOption[] }>("/api/users", { cache: "no-store" })
+              .then(({ users: updatedUsers }) => { if (active) setUsers(updatedUsers); })
+              .catch((cause: unknown) => {
+                if (active) setError(cause instanceof Error ? cause.message : "No se pudo actualizar la lista de colaboradores.");
+              });
+          }
+          request<{ members: MentionOption[] }>("/api/mentions", { cache: "no-store" })
+            .then(({ members }) => { if (active) setMentionUsers(members); })
+            .catch((cause: unknown) => {
+              if (active) setError(cause instanceof Error ? cause.message : "No se pudo actualizar la lista de menciones.");
+            });
         };
         channel.bind("workspace:updated", refreshWorkspaceList);
         setPusherClient(client);
@@ -1084,7 +1215,7 @@ export default function Home() {
         client.disconnect();
       }
     };
-  }, [status, workspaceId, currentUserId]);
+  }, [status, workspaceId, currentUserId, isAdmin]);
 
   async function mutate<T>(url: string, init?: RequestInit): Promise<T | null> {
     setSaving(true);
@@ -1110,7 +1241,7 @@ export default function Home() {
       const matchesSearch = !query || `${task.title} ${task.description}`.toLocaleLowerCase().includes(query);
       const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
       const matchesColumn = columnFilter === "all" || task.columnId === columnFilter;
-      const matchesAssignee = !mineOnly || task.assigneeId === currentUserId;
+      const matchesAssignee = !mineOnly || task.assigneeId === currentUserId || task.assignees.some((assignee) => assignee.id === currentUserId);
       return matchesSearch && matchesPriority && matchesColumn && matchesAssignee;
     });
   }, [workspaceTasks, search, priorityFilter, columnFilter, mineOnly, currentUserId]);
@@ -1121,7 +1252,8 @@ export default function Home() {
   async function saveTask(draft: TaskDraft, id?: number) {
     const previousTasks = tasks;
     const existingTask = id ? tasks.find((task) => task.id === id) : undefined;
-    const selectedAssignee = users.find((user) => user.id === draft.assigneeId);
+    const selectedAssignees = users.filter((user) => draft.assigneeIds.includes(user.id));
+    const selectedAssignee = selectedAssignees[0];
     const optimisticTask: Task = {
       id: id ?? -Date.now(),
       title: draft.title.trim(),
@@ -1129,8 +1261,11 @@ export default function Home() {
       priority: draft.priority,
       columnId: Number(draft.columnId),
       assignee: selectedAssignee?.name ?? selectedAssignee?.email ?? existingTask?.assignee ?? displayName,
-      assigneeId: isAdmin ? draft.assigneeId || null : currentUserId ?? null,
+      assigneeId: isAdmin ? selectedAssignee?.id ?? null : currentUserId ?? null,
       assigneeName: selectedAssignee?.name ?? selectedAssignee?.email ?? (isAdmin ? existingTask?.assigneeName : displayName) ?? displayName,
+      assignees: isAdmin
+        ? selectedAssignees.map((member) => ({ id: member.id, name: member.name ?? member.email ?? "Usuario", image: member.image }))
+        : existingTask?.assignees ?? [],
       completed: draft.completed,
       dueDate: draft.dueDate || null,
       createdAt: existingTask?.createdAt ?? new Date().toISOString(),
@@ -1146,7 +1281,7 @@ export default function Home() {
         description: draft.description,
         priority: draft.priority,
         columnId: Number(draft.columnId),
-        ...(isAdmin ? { assigneeId: draft.assigneeId || null } : {}),
+        ...(isAdmin ? { assigneeIds: draft.assigneeIds } : {}),
         dueDate: draft.dueDate || null,
         ...(id ? { completed: draft.completed } : {}),
       }),
@@ -1194,11 +1329,17 @@ export default function Home() {
     } else setColumns(previousColumns);
   }
 
-  async function createWorkspace(values: Pick<Workspace, "name" | "description" | "icon" | "color">) {
+  async function createWorkspace(values: WorkspaceDraft) {
     setSaving(true);
     setError("");
     const optimisticId = -Date.now();
-    const optimisticWorkspace = { id: optimisticId, ...values };
+    const optimisticWorkspace: Workspace = {
+      id: optimisticId,
+      ...values,
+      createdBy: currentUserId ?? null,
+      createdAt: new Date().toISOString(),
+      memberIds: [...new Set([currentUserId, ...values.memberIds].filter((id): id is string => Boolean(id)))],
+    };
     setWorkspaces((current) => [...current, optimisticWorkspace]);
     setWorkspaceId(optimisticId);
     setView("board");
@@ -1207,7 +1348,11 @@ export default function Home() {
         method: "POST",
         body: JSON.stringify(values),
       });
-      setWorkspaces((current) => current.map((item) => item.id === optimisticId ? result.workspace : item));
+      const savedWorkspace = {
+        ...result.workspace,
+        memberIds: optimisticWorkspace.memberIds,
+      };
+      setWorkspaces((current) => current.map((item) => item.id === optimisticId ? savedWorkspace : item));
       setWorkspaceId(result.workspace.id);
       setWorkspaceDialogOpen(false);
     } catch (cause) {
@@ -1219,7 +1364,7 @@ export default function Home() {
     }
   }
 
-  async function updateWorkspace(values: Pick<Workspace, "name" | "description" | "icon" | "color">) {
+  async function updateWorkspace(values: WorkspaceDraft) {
     if (!workspaceEdit) return;
     const workspace = workspaceEdit;
     const previousWorkspaces = workspaces;
@@ -1232,7 +1377,9 @@ export default function Home() {
         method: "PATCH",
         body: JSON.stringify(values),
       });
-      setWorkspaces((current) => current.map((item) => item.id === result.workspace.id ? result.workspace : item));
+      setWorkspaces((current) => current.map((item) => item.id === result.workspace.id
+        ? { ...result.workspace, memberIds: [...new Set([currentUserId, ...values.memberIds].filter((id): id is string => Boolean(id)))] }
+        : item));
       setWorkspaceEdit(null);
       setWorkspaceMenuId(null);
     } catch (cause) {
@@ -1520,23 +1667,15 @@ export default function Home() {
           {loading && !featureView ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className="h-56 animate-pulse rounded-xl border border-slate-200 bg-white p-4"><div className="h-3 w-24 rounded bg-slate-100" /><div className="mt-6 h-20 rounded-lg bg-slate-50" /><div className="mt-3 h-20 rounded-lg bg-slate-50" /></div>)}</div> :
             featureView ? <WorkspaceFeatureViews key={`${workspaceId ?? "none"}-${view}`} view={view} workspaceId={workspaceId} workspaceName={workspaceName} tasks={workspaceTasks} columns={activeColumns} pusherClient={pusherClient} /> :
             view === "dashboard" ? (
-              <section className="space-y-5">
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {[
-                    { label: "Tareas totales", value: workspaceTasks.length, icon: "list" as const, tone: "bg-indigo-50 text-indigo-600" },
-                    { label: "Completadas", value: completedCount, icon: "check" as const, tone: "bg-emerald-50 text-emerald-600" },
-                    { label: "Pendientes", value: workspaceTasks.length - completedCount, icon: "clock" as const, tone: "bg-amber-50 text-amber-600" },
-                  ].map((stat) => <div key={stat.label} className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/30"><div className="flex items-center justify-between"><span className="text-sm font-medium text-slate-500">{stat.label}</span><span className={`flex size-9 items-center justify-center rounded-lg ${stat.tone}`}><Icon name={stat.icon} /></span></div><div className="mt-4 text-3xl font-bold tracking-tight text-slate-900">{stat.value}</div></div>)}
-                </div>
-                <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm shadow-slate-200/30"><div className="mb-5"><h3 className="font-semibold text-slate-900">Progreso por columna</h3><p className="mt-1 text-xs text-slate-500">Tareas abiertas y completadas en cada etapa.</p></div>
-                  {activeColumns.length ? <div className="space-y-5">{activeColumns.map((column) => { const group = workspaceTasks.filter((task) => task.columnId === column.id); const done = group.filter((task) => task.completed).length; return <div key={column.id}><div className="mb-2 flex items-center justify-between text-sm"><span className="font-medium text-slate-700">{column.name}</span><span className="text-xs text-slate-400">{done} / {group.length} completadas</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${group.length ? done / group.length * 100 : 0}%` }} /></div></div>; })}</div> : <EmptyState title="Aún no hay columnas" body="Añade una columna para empezar a organizar tu trabajo." onAction={() => setColumnDialog({ open: true, column: null })} action="Añadir columna" />}</div>
-              </section>
+              activeWorkspace
+                ? <ProjectOverview project={activeWorkspace} tasks={workspaceTasks} columns={activeColumns} />
+                : <EmptyState title="Selecciona un proyecto" body="Crea o selecciona un proyecto para consultar su resumen." onAction={() => setWorkspaceDialogOpen(true)} action="Crear proyecto" />
             ) : view === "inbox" ? (
               <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/30">
                 <div className="border-b border-slate-100 px-5 py-4"><h3 className="text-sm font-semibold text-slate-900">Tareas asignadas a ti</h3><p className="mt-1 text-xs text-slate-500">Seguimiento de tareas de {workspaceName}. Este proyecto aún no almacena notificaciones individuales.</p></div>
                 <div className="divide-y divide-slate-100">
-                  {workspaceTasks.filter((task) => task.assigneeId === currentUserId).sort((left, right) => right.createdAt.localeCompare(left.createdAt)).map((task) => <button key={task.id} type="button" onClick={() => showTask(task)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-slate-50"><span className={`size-2 rounded-full ${task.completed ? "bg-emerald-500" : "bg-indigo-500"}`} /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-800">{task.title}</span><span className="mt-1 block text-xs text-slate-500">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin columna"} · {task.completed ? "Completada" : "Pendiente"}</span></span><time className="text-[10px] text-slate-400">{new Date(task.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</time></button>)}
-                  {!workspaceTasks.some((task) => task.assigneeId === currentUserId) && <div className="px-5 py-10 text-center text-sm text-slate-500">No tienes tareas asignadas en este espacio.</div>}
+                  {workspaceTasks.filter((task) => task.assigneeId === currentUserId || task.assignees.some((assignee) => assignee.id === currentUserId)).sort((left, right) => right.createdAt.localeCompare(left.createdAt)).map((task) => <button key={task.id} type="button" onClick={() => showTask(task)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-slate-50"><span className={`size-2 rounded-full ${task.completed ? "bg-emerald-500" : "bg-indigo-500"}`} /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-800">{task.title}</span><span className="mt-1 block text-xs text-slate-500">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin columna"} · {task.completed ? "Completada" : "Pendiente"}</span></span><time className="text-[10px] text-slate-400">{new Date(task.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</time></button>)}
+                  {!workspaceTasks.some((task) => task.assigneeId === currentUserId || task.assignees.some((assignee) => assignee.id === currentUserId)) && <div className="px-5 py-10 text-center text-sm text-slate-500">No tienes tareas asignadas en este espacio.</div>}
                 </div>
               </section>
             ) : view === "board" ? (
@@ -1562,7 +1701,7 @@ export default function Home() {
             ) : view === "list" ? (
               <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/30">
                 <div className="overflow-x-auto"><table className="w-full min-w-[720px] border-collapse text-left"><thead><tr className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">{showRowNumbers && <th className="px-3 py-3 text-right">#</th>}<th className="px-5 py-3">Tarea</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3">Prioridad</th><th className="px-4 py-3">Asignada a</th><th className="px-4 py-3">Fecha</th><th className="px-4 py-3 text-right">Acción</th></tr></thead><tbody>
-                  {visibleTasks.map((task, index) => <tr key={task.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">{showRowNumbers && <td className="px-3 py-3.5 text-right text-xs text-slate-400">{index + 1}</td>}<td className="max-w-[340px] px-5 py-3.5"><button type="button" onClick={() => showTask(task)} className={`block truncate text-left text-sm font-semibold hover:text-indigo-700 ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</button>{task.description && <p className="mt-1 truncate text-xs text-slate-400">{task.description}</p>}</td><td className="px-4 py-3.5"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin estado"}</span></td><td className="px-4 py-3.5"><PriorityPill priority={task.priority} /></td><td className="px-4 py-3.5"><span className="flex items-center gap-2 text-xs text-slate-600"><span className="flex size-6 items-center justify-center rounded-full bg-indigo-50 text-[9px] font-bold text-indigo-600">{initials(task.assigneeName)}</span>{task.assigneeName}</span></td><td className="px-4 py-3.5 text-xs text-slate-500">{new Date(task.dueDate ?? task.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</td><td className="px-4 py-3.5 text-right"><button type="button" aria-label={task.completed ? "Marcar como pendiente" : "Marcar como completada"} onClick={() => void toggleTaskCompletion(task)} className={`rounded-lg p-2 ${task.completed ? "text-emerald-600 hover:bg-emerald-50" : "text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"}`}><Icon name="check" size={17} /></button></td></tr>)}
+                  {visibleTasks.map((task, index) => <tr key={task.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">{showRowNumbers && <td className="px-3 py-3.5 text-right text-xs text-slate-400">{index + 1}</td>}<td className="max-w-[340px] px-5 py-3.5"><button type="button" onClick={() => showTask(task)} className={`block truncate text-left text-sm font-semibold hover:text-indigo-700 ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</button>{task.description && <p className="mt-1 truncate text-xs text-slate-400">{task.description}</p>}</td><td className="px-4 py-3.5"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">{columns.find((column) => column.id === task.columnId)?.name ?? "Sin estado"}</span></td><td className="px-4 py-3.5"><PriorityPill priority={task.priority} /></td><td className="px-4 py-3.5"><span className="flex items-center gap-2 text-xs text-slate-600"><AssigneeAvatars task={task} /><span className="max-w-32 truncate">{(task.assignees ?? []).map((person) => person.name).join(", ") || task.assigneeName}</span></span></td><td className="px-4 py-3.5"><TaskDueDate task={task} showCreatedDate /></td><td className="px-4 py-3.5 text-right"><button type="button" aria-label={task.completed ? "Marcar como pendiente" : "Marcar como completada"} onClick={() => void toggleTaskCompletion(task)} className={`rounded-lg p-2 ${task.completed ? "text-emerald-600 hover:bg-emerald-50" : "text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"}`}><Icon name="check" size={17} /></button></td></tr>)}
                   </tbody></table></div>
                 {visibleTasks.length === 0 && <div className="p-8"><EmptyState title="No hay tareas para mostrar" body="Prueba con otros filtros o crea una tarea nueva." onAction={() => setTaskDialog({ open: true, task: null })} action="Nueva tarea" /></div>}
               </div>
@@ -1580,10 +1719,10 @@ export default function Home() {
         </div>
       </main>
 
-      {taskDialog.open && <TaskModal key={taskDialog.task?.id ?? "new-task"} task={taskDialog.task} columns={activeColumns} users={users} isAdmin={isAdmin} commentAuthor={displayName} commentAuthorImage={session.user.image ?? null} mentionUsers={mentionUsers} workspaceId={workspaceId} pusherClient={pusherClient} saving={saving} onClose={() => setTaskDialog({ open: false, task: null })} onSave={saveTask} onDelete={isAdmin ? deleteTask : undefined} />}
+      {taskDialog.open && <TaskModal key={taskDialog.task?.id ?? "new-task"} task={taskDialog.task} columns={activeColumns} users={activeWorkspace?.isPrivate ? users.filter((member) => activeWorkspace.memberIds.includes(member.id)) : users} isAdmin={isAdmin} commentAuthor={displayName} commentAuthorImage={session.user.image ?? null} mentionUsers={mentionUsers} workspaceId={workspaceId} pusherClient={pusherClient} saving={saving} onClose={() => setTaskDialog({ open: false, task: null })} onSave={saveTask} onDelete={isAdmin ? deleteTask : undefined} />}
       {columnDialog.open && <ColumnModal key={columnDialog.column?.id ?? "new-column"} column={columnDialog.column} workspaceName={workspaceName} saving={saving} onClose={() => setColumnDialog({ open: false, column: null })} onSave={saveColumn} />}
-      {workspaceDialogOpen && <WorkspaceModal saving={saving} onClose={() => setWorkspaceDialogOpen(false)} onSave={createWorkspace} />}
-      {workspaceEdit && <WorkspaceModal workspace={workspaceEdit} saving={saving} onClose={() => setWorkspaceEdit(null)} onSave={updateWorkspace} />}
+      {workspaceDialogOpen && <WorkspaceModal users={users} saving={saving} onClose={() => setWorkspaceDialogOpen(false)} onSave={createWorkspace} />}
+      {workspaceEdit && <WorkspaceModal workspace={workspaceEdit} users={users} saving={saving} onClose={() => setWorkspaceEdit(null)} onSave={updateWorkspace} />}
       {workspaceDelete && <Modal title="Eliminar espacio de trabajo" subtitle={`¿Seguro que quieres eliminar “${workspaceDelete.name}”? Solo se pueden eliminar espacios sin tareas.`} onClose={() => setWorkspaceDelete(null)}>
         <div className="flex justify-end gap-2">
           <button type="button" disabled={saving} onClick={() => setWorkspaceDelete(null)} className="button-secondary">Cancelar</button>
@@ -1633,7 +1772,7 @@ function TaskCard({ task, onClick, onComplete }: { task: Task; onClick: () => vo
     <article draggable onDragStart={(event) => { event.dataTransfer.setData("text/task-id", String(task.id)); event.dataTransfer.effectAllowed = "move"; }} onClick={onClick} className={`group cursor-grab rounded-lg border bg-white p-3.5 shadow-sm shadow-slate-200/50 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md active:cursor-grabbing ${task.completed ? "border-emerald-100" : "border-slate-200/80"}`}>
       <div className="mb-2.5 flex items-start justify-between gap-2"><span className={`text-[13px] font-semibold leading-5 ${task.completed ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</span><button type="button" aria-label={task.completed ? "Marcar como pendiente" : "Marcar como completada"} onClick={(event) => { event.stopPropagation(); onComplete(); }} className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border transition ${task.completed ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 text-transparent hover:border-indigo-500 hover:text-indigo-500"}`}><Icon name="check" size={12} /></button></div>
       {task.description && <p className="mb-3 line-clamp-2 text-[11px] leading-[1.6] text-slate-500">{task.description}</p>}
-      <div className="flex items-center justify-between gap-2"><PriorityPill priority={task.priority} /><div className="flex items-center gap-2"><span className="text-[10px] text-slate-400">{task.dueDate ? new Date(`${task.dueDate}T00:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : ""}</span><span title={`Asignada a ${task.assigneeName}`} className="flex size-6 items-center justify-center rounded-full bg-indigo-50 text-[8px] font-bold text-indigo-600">{initials(task.assigneeName)}</span></div></div>
+      <div className="flex items-center justify-between gap-2"><PriorityPill priority={task.priority} /><div className="flex items-center gap-2"><TaskDueDate task={task} /><AssigneeAvatars task={task} /></div></div>
     </article>
   );
 }

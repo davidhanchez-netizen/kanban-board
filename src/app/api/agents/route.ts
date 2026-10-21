@@ -1,15 +1,17 @@
 import { and, asc, desc, eq, gte, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { apiError, parseId, requireUser } from "../_utils";
+import { apiError, canAccessWorkspace, parseId, requireUser } from "../_utils";
 import { publishWorkspaceEvent } from "../_pusher";
 import { getDb } from "@/app/db";
 import {
   agentActivity,
   columns,
   tasks,
+  taskAssignees,
   userPreferences,
   users,
   workspaceAgents,
+  workspaceMembers,
   workspaces,
 } from "@/app/db/schema";
 
@@ -25,22 +27,17 @@ function isAgentKey(value: unknown): value is AgentKey {
   return typeof value === "string" && value in agentNames;
 }
 
-async function ensureWorkspace(workspaceId: number) {
-  const [workspace] = await getDb()
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(eq(workspaces.id, workspaceId))
-    .limit(1);
-  return workspace;
+async function ensureWorkspace(workspaceId: number, userId: string) {
+  return canAccessWorkspace(workspaceId, userId);
 }
 
 export async function GET(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
     const workspaceId = parseId(new URL(request.url).searchParams.get("workspaceId") ?? "");
     if (!workspaceId) return Response.json({ error: "Choose a valid workspace." }, { status: 400 });
-    if (!(await ensureWorkspace(workspaceId))) return Response.json({ error: "Workspace not found." }, { status: 404 });
+    if (!(await ensureWorkspace(workspaceId, user.id))) return Response.json({ error: "Workspace not found." }, { status: 404 });
 
     const db = getDb();
     const [configuredAgents, logs] = await Promise.all([
@@ -73,7 +70,7 @@ export async function POST(request: Request) {
     if (!workspaceId || !isAgentKey(input.agentKey)) {
       return Response.json({ error: "Choose a valid workspace and agent." }, { status: 400 });
     }
-    if (!(await ensureWorkspace(workspaceId))) return Response.json({ error: "Workspace not found." }, { status: 404 });
+    if (!(await ensureWorkspace(workspaceId, user.id))) return Response.json({ error: "Workspace not found." }, { status: 404 });
     const db = getDb();
 
     if (input.action === "toggle") {
@@ -109,7 +106,16 @@ export async function POST(request: Request) {
         .leftJoin(userPreferences, eq(userPreferences.userId, users.id))
         .where(or(isNull(userPreferences.userId), eq(userPreferences.outOfOffice, false)))
         .orderBy(asc(users.name), asc(users.email));
-      const available = candidates;
+      const [workspace] = await db.select({ isPrivate: workspaces.isPrivate, createdBy: workspaces.createdBy })
+        .from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1);
+      const projectMembers = workspace?.isPrivate
+        ? await db.select({ userId: workspaceMembers.userId }).from(workspaceMembers)
+          .where(eq(workspaceMembers.workspaceId, workspaceId))
+        : [];
+      const eligibleIds = workspace?.isPrivate
+        ? new Set([...projectMembers.map(({ userId }) => userId), ...(workspace.createdBy ? [workspace.createdBy] : [])])
+        : null;
+      const available = candidates.filter((member) => !eligibleIds || eligibleIds.has(member.id));
       const openTasks = await db.select({ id: tasks.id })
         .from(tasks)
         .innerJoin(columns, eq(tasks.columnId, columns.id))
@@ -137,6 +143,7 @@ export async function POST(request: Request) {
           .where(eq(tasks.id, task.id))
           .returning();
         if (updated) {
+          await db.insert(taskAssignees).values({ taskId: updated.id, userId: candidate.id }).onConflictDoNothing();
           assigned += 1;
           counts.set(candidate.id, (counts.get(candidate.id) ?? 0) + 1);
           taskUpdates.push(publishWorkspaceEvent(workspaceId, "task:updated", { task: updated }));

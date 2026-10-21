@@ -1,9 +1,10 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/app/db";
-import { accounts, sessions, users, verificationTokens } from "@/app/db/schema";
+import { accounts, sessions, users, verificationTokens, workspaceInvitations, workspaceMembers } from "@/app/db/schema";
+import { publishWorkspaceEvent } from "@/app/api/_pusher";
 
 const adminEmails = new Set(
   (process.env.ADMIN_EMAILS ?? "")
@@ -55,6 +56,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.role = user.role ?? "MEMBER";
       }
       return session;
+    },
+  },
+  events: {
+    async signIn({ user }) {
+      const userId = user.id;
+      const userEmail = user.email;
+      if (!userId || !userEmail) return;
+      const email = userEmail.trim().toLowerCase();
+      const db = getDb();
+      const invitations = await db.select({ workspaceId: workspaceInvitations.workspaceId })
+        .from(workspaceInvitations)
+        .where(sql`lower(${workspaceInvitations.email}) = ${email}`);
+      if (!invitations.length) return;
+      await db.insert(workspaceMembers)
+        .values(invitations.map(({ workspaceId }) => ({ workspaceId, userId })))
+        .onConflictDoNothing();
+      await db.delete(workspaceInvitations)
+        .where(sql`lower(${workspaceInvitations.email}) = ${email}`);
+      for (const workspaceId of new Set(invitations.map(({ workspaceId }) => workspaceId))) {
+        await publishWorkspaceEvent(workspaceId, "workspace:updated", {});
+      }
     },
   },
 });

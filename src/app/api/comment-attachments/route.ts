@@ -1,21 +1,30 @@
 import { eq } from "drizzle-orm";
-import { apiError, parseId, requireUser } from "../_utils";
+import { apiError, canAccessWorkspace, parseId, requireUser } from "../_utils";
 import { getDb } from "@/app/db";
-import { commentAttachments } from "@/app/db/schema";
+import { columns, commentAttachments, comments, tasks } from "@/app/db/schema";
 
 export async function GET(request: Request) {
   try {
-    const { response } = await requireUser();
+    const { user, response } = await requireUser();
     if (response) return response;
 
     const id = parseId(new URL(request.url).searchParams.get("id") ?? "");
     if (!id) return Response.json({ error: "A valid attachment id is required." }, { status: 400 });
     const [attachment] = await getDb()
-      .select({ fileName: commentAttachments.fileName, mimeType: commentAttachments.mimeType, data: commentAttachments.data })
+      .select({
+        fileName: commentAttachments.fileName,
+        mimeType: commentAttachments.mimeType,
+        data: commentAttachments.data,
+        workspaceId: columns.workspaceId,
+      })
       .from(commentAttachments)
+      .innerJoin(comments, eq(commentAttachments.commentId, comments.id))
+      .innerJoin(tasks, eq(comments.taskId, tasks.id))
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
       .where(eq(commentAttachments.id, id))
       .limit(1);
     if (!attachment) return Response.json({ error: "Attachment not found." }, { status: 404 });
+    if (!(await canAccessWorkspace(attachment.workspaceId, user.id))) return Response.json({ error: "Attachment not found." }, { status: 404 });
 
     const bytes = Buffer.from(attachment.data, "base64");
     const safeName = attachment.fileName
