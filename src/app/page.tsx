@@ -1374,21 +1374,23 @@ export default function Home() {
                   const selected = workspaceId === workspace.id;
                   const menuOpen = workspaceMenuId === workspace.id;
                   return (
-                    <div key={workspace.id} data-workspace-menu className="group/workspace relative flex items-center">
+                    <div key={workspace.id} data-workspace-menu className="group/workspace relative flex w-full items-center justify-between gap-2">
                       <button
                         type="button"
                         title={workspace.description || workspace.name}
                         aria-current={selected ? "true" : undefined}
                         onClick={() => selectWorkspace(workspace.id)}
-                        className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 pr-1 text-left text-[13px] font-medium transition ${selected ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}
+                        className={`flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition ${selected ? "bg-indigo-50 text-indigo-700" : "text-slate-600 hover:bg-slate-50"}`}
                       >
-                        {workspace.name === "Under Control"
-                          ? <Image src="/logo.png" alt="" width={24} height={24} className="size-6 shrink-0 object-contain" />
-                          : <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-md text-sm" style={{ backgroundColor: `${workspace.color}20`, color: workspace.color }}>
-                            {workspace.icon === "briefcase" ? <Icon name="briefcase" size={16} /> : workspace.icon}
-                          </span>}
-                        {navigationLabels === "icons-and-text" && <span className="min-w-0 flex-1 truncate">{workspace.name}</span>}
-                        <span className="ml-auto text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === workspace.id).length}</span>
+                        <span className="flex min-w-0 items-center gap-2 truncate">
+                          {workspace.name === "Under Control"
+                            ? <Image src="/logo.png" alt="" width={24} height={24} className="size-6 shrink-0 object-contain" />
+                            : <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-md text-sm" style={{ backgroundColor: `${workspace.color}20`, color: workspace.color }}>
+                              {workspace.icon === "briefcase" ? <Icon name="briefcase" size={16} /> : workspace.icon}
+                            </span>}
+                          {navigationLabels === "icons-and-text" && <span className="min-w-0 truncate">{workspace.name}</span>}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-slate-400">{columns.filter((column) => column.workspaceId === workspace.id).length}</span>
                       </button>
                       <button
                         type="button"
@@ -1399,7 +1401,7 @@ export default function Home() {
                           event.stopPropagation();
                           setWorkspaceMenuId((current) => current === workspace.id ? null : workspace.id);
                         }}
-                        className={`absolute right-1 z-10 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900 ${selected || menuOpen ? "opacity-100" : "opacity-0 group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100"}`}
+                        className={`flex size-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition-opacity hover:bg-white/10 hover:text-slate-900 ${menuOpen ? "opacity-100" : "opacity-0 group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100"}`}
                       >
                         <Icon name="more" size={16} />
                       </button>
