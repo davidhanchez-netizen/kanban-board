@@ -213,8 +213,23 @@ export const tasks = pgTable("tasks", {
     .references(() => columns.id, { onDelete: "restrict" }),
   assignee: text("assignee").notNull().default("You"),
   assigneeId: text("assignee_id").references(() => users.id, { onDelete: "set null" }),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
   completed: boolean("completed").notNull().default(false),
   dueDate: date("due_date"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  type: text("type").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  workspaceId: integer("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  readAt: timestamp("read_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

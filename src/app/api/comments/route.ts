@@ -2,8 +2,9 @@ import { asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { apiError, canAccessWorkspace, parseId, requireUser } from "../_utils";
 import { publishWorkspaceEvent } from "../_pusher";
+import { getTaskAssigneeIds, getTaskNotificationContext, notifyUsersForComment } from "../_notifications";
 import { getDb } from "@/app/db";
-import { columns, commentAttachments, comments, tasks, users } from "@/app/db/schema";
+import { columns, commentAttachments, comments, tasks, users, workspaceMembers, workspaces } from "@/app/db/schema";
 
 export async function GET(request: Request) {
   try {
@@ -78,10 +79,11 @@ export async function POST(request: Request) {
     if (!body || typeof body !== "object") {
       return Response.json({ error: "Task id and comment content are required." }, { status: 400 });
     }
-    const { taskId: rawTaskId, content, attachmentsCount } = body as {
+    const { taskId: rawTaskId, content, attachmentsCount, mentions } = body as {
       taskId?: unknown;
       content?: unknown;
       attachmentsCount?: unknown;
+      mentions?: unknown;
     };
     const taskId = typeof rawTaskId === "number" && Number.isSafeInteger(rawTaskId) && rawTaskId > 0
       ? rawTaskId
@@ -94,6 +96,13 @@ export async function POST(request: Request) {
     ) {
       return Response.json({ error: "Provide a valid task id and comment text or up to 5 attachments." }, { status: 400 });
     }
+    if (mentions !== undefined && (
+      !Array.isArray(mentions) || mentions.length > 50 ||
+      mentions.some((id) => typeof id !== "string" || !id.trim()) ||
+      new Set(mentions).size !== mentions.length
+    )) {
+      return Response.json({ error: "Choose valid users to mention." }, { status: 400 });
+    }
 
     const db = getDb();
     const [task] = await db
@@ -104,6 +113,22 @@ export async function POST(request: Request) {
       .limit(1);
     if (!task) return Response.json({ error: "Task not found." }, { status: 404 });
     if (!(await canAccessWorkspace(task.workspaceId, user.id))) return Response.json({ error: "Task not found." }, { status: 404 });
+
+    const mentionIds = (mentions as string[] | undefined) ?? [];
+    if (mentionIds.length) {
+      const [workspace] = await db.select({ isPrivate: workspaces.isPrivate, createdBy: workspaces.createdBy })
+        .from(workspaces).where(eq(workspaces.id, task.workspaceId)).limit(1);
+      const allowedIds = workspace?.isPrivate
+        ? [
+            ...(await db.select({ userId: workspaceMembers.userId }).from(workspaceMembers)
+              .where(eq(workspaceMembers.workspaceId, task.workspaceId))).map(({ userId }) => userId),
+            ...(workspace.createdBy ? [workspace.createdBy] : []),
+          ]
+        : (await db.select({ id: users.id }).from(users)).map(({ id }) => id);
+      if (mentionIds.some((id) => !allowedIds.includes(id))) {
+        return Response.json({ error: "Only project members can be mentioned in a private project." }, { status: 400 });
+      }
+    }
 
     const [created] = await db
       .insert(comments)
@@ -117,6 +142,24 @@ export async function POST(request: Request) {
       attachments: [],
     };
     await publishWorkspaceEvent(task.workspaceId, "comment:created", { comment });
+    const notificationTask = await getTaskNotificationContext(taskId);
+    if (notificationTask) {
+      const assignees = await getTaskAssigneeIds(taskId);
+      const recipients = [...new Set([
+        ...assignees,
+        ...(notificationTask.createdBy ? [notificationTask.createdBy] : []),
+        ...mentionIds,
+      ])];
+      await notifyUsersForComment({
+        recipientIds: recipients,
+        mentionIds,
+        authorId: user.id,
+        authorName: user.name ?? user.email ?? "Usuario",
+        workspaceId: task.workspaceId,
+        task: notificationTask,
+        comment: content.trim(),
+      });
+    }
     revalidatePath("/");
     return Response.json({
       comment,

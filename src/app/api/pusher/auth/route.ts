@@ -13,14 +13,25 @@ export async function POST(request: Request) {
     const socketId = formData.get("socket_id");
     const channelName = formData.get("channel_name");
     const match = typeof channelName === "string" && /^private-workspace-(\d+)$/.exec(channelName);
+    const userMatch = typeof channelName === "string" && /^private-user-(.+)$/.exec(channelName);
     if (
       typeof socketId !== "string" ||
       !/^\d+\.\d+$/.test(socketId) ||
-      !match
+      (!match && !userMatch)
     ) {
       return Response.json({ error: "Invalid Pusher channel authorization request." }, { status: 400 });
     }
 
+    if (userMatch) {
+      if (userMatch[1] !== user.id) return Response.json({ error: "User channel not found." }, { status: 404 });
+      const authorization = authorizeWorkspaceChannel(socketId, channelName as string);
+      if (!authorization) {
+        return Response.json({ error: "Real-time updates are not configured." }, { status: 503 });
+      }
+      return Response.json(authorization);
+    }
+
+    if (!match) return Response.json({ error: "Invalid Pusher channel authorization request." }, { status: 400 });
     const workspaceId = Number(match[1]);
     if (!Number.isSafeInteger(workspaceId) || workspaceId < 1) {
       return Response.json({ error: "Invalid workspace." }, { status: 400 });

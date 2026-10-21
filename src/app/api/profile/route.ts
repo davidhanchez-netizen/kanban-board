@@ -89,6 +89,7 @@ export async function GET() {
         ...profile,
         outOfOffice: profile.outOfOffice ?? false,
         settings: parseSettings(profile.settings) ?? defaultSettings,
+        emailDeliveryConfigured: Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && process.env.APP_URL),
       },
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -239,6 +240,7 @@ export async function PATCH(request: Request) {
         department: preference.department,
         about: preference.about,
         outOfOffice: preference.outOfOffice ?? false,
+        emailDeliveryConfigured: Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL && process.env.APP_URL),
         settings: parseSettings(preference.settings) ?? defaultSettings,
       },
     });

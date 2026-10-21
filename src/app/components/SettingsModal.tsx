@@ -37,6 +37,7 @@ type UserProfile = {
   department: string | null;
   about: string | null;
   outOfOffice: boolean;
+  emailDeliveryConfigured: boolean;
   settings: UserSettings;
 };
 
@@ -361,7 +362,8 @@ export function SettingsModal({
                 <Toggle label="Notificaciones del navegador" description="Solicita permiso al navegador y avisa cuando te asignen una tarea." checked={profile.settings.browserNotifications} onChange={(value) => void updateBrowserNotifications(value)} />
                 <Toggle label="Notificaciones de proyectos y objetivos" checked={profile.settings.projectNotifications} onChange={(value) => updateSetting("projectNotifications", value)} />
                 <Toggle label="No molestar" description="Silencia los avisos de tareas asignadas en este navegador." checked={profile.settings.doNotDisturb} onChange={(value) => updateSetting("doNotDisturb", value)} />
-                <div className="py-4"><p className="text-sm font-semibold text-slate-800">Canales no configurados</p><p className="mt-1 text-xs text-slate-500">Las notificaciones por correo y las integraciones de Slack/Teams requieren servicios externos que este proyecto no tiene conectados.</p></div>
+                <Toggle label="Notificaciones por correo" description={profile.emailDeliveryConfigured ? "Recibirás correos cuando te asignen tareas, te mencionen o haya actividad en tus tareas." : "Configura RESEND_API_KEY, RESEND_FROM_EMAIL y APP_URL en el servidor para activar el envío."} checked={profile.settings.emailNotifications} onChange={(value) => updateSetting("emailNotifications", value)} />
+                <div className="py-4"><p className="text-sm font-semibold text-slate-800">Integraciones externas</p><p className="mt-1 text-xs text-slate-500">Las notificaciones de Slack y Teams requieren una integración adicional.</p></div>
               </div>}
 
               {tab === "account" && <div className="space-y-5">

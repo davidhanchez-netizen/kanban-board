@@ -43,6 +43,20 @@ export async function publishWorkspaceEvent(
   }
 }
 
+export async function publishUserEvent(
+  userId: string,
+  eventName: string,
+  data: Record<string, unknown>,
+) {
+  try {
+    const client = getPusher();
+    if (!client) return;
+    await client.trigger(`private-user-${userId}`, eventName, data);
+  } catch (error) {
+    console.error(`Pusher failed to publish ${eventName} for user ${userId}:`, error);
+  }
+}
+
 export function authorizeWorkspaceChannel(socketId: string, channelName: string) {
   const client = getPusher();
   if (!client) return null;

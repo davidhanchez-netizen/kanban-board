@@ -2,6 +2,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { apiError, canAccessWorkspace, getAccessibleWorkspaceIds, isPriority, requireRole, requireUser } from "../_utils";
 import { publishWorkspaceEvent } from "../_pusher";
+import { getTaskAssigneeIds, getTaskNotificationContext, notifyTaskUsers } from "../_notifications";
 import { runTaskAutomations, runTaskDeletionAutomation } from "../agents/_automation";
 import { getDb } from "@/app/db";
 import { columns, comments, taskAssignees, tasks, users, workspaceMembers, workspaces } from "@/app/db/schema";
@@ -152,6 +153,7 @@ export async function POST(request: Request) {
         description: (task.description as string | undefined)?.trim() ?? "",
         priority: isPriority(task.priority) ? task.priority : "medium",
         columnId: task.columnId as number,
+        createdBy: user.id,
         assignee: matchedAssignees[0]
           ? matchedAssignees[0].name ?? matchedAssignees[0].email ?? "Member"
           : (task.assignee as string | undefined)?.trim() || "You",
@@ -182,6 +184,18 @@ export async function POST(request: Request) {
         attachments: [],
       },
     });
+    const notificationTask = await getTaskNotificationContext(created.id);
+    if (notificationTask) {
+      await notifyTaskUsers({
+        recipientIds: finalAssigneeIds,
+        actorId: user.id,
+        actorName: user.name ?? user.email ?? "Un usuario",
+        type: "assigned",
+        workspaceId: destination.workspaceId,
+        task: notificationTask,
+        message: `te asignó la tarea “${created.title}”.`,
+      });
+    }
     revalidatePath("/");
     return Response.json({ task: taskWithAssignees }, { status: 201 });
   } catch (error) {
@@ -212,6 +226,8 @@ export async function PATCH(request: Request) {
         dueDate: tasks.dueDate,
         priority: tasks.priority,
         completed: tasks.completed,
+        assigneeId: tasks.assigneeId,
+        createdBy: tasks.createdBy,
       })
       .from(tasks)
       .innerJoin(columns, eq(tasks.columnId, columns.id))
@@ -219,6 +235,7 @@ export async function PATCH(request: Request) {
       .limit(1);
     if (!previous) return Response.json({ error: "Task not found." }, { status: 404 });
     if (!(await canAccessWorkspace(previous.workspaceId, user.id))) return Response.json({ error: "Task not found." }, { status: 404 });
+    const previousAssigneeIds = await getTaskAssigneeIds(previous.id);
 
     const values: Partial<typeof tasks.$inferInsert> = {};
     const assigneeIds = update.assigneeIds === undefined
@@ -328,6 +345,23 @@ export async function PATCH(request: Request) {
         await db.insert(taskAssignees).values(assigneeIdsToSync.map((userId) => ({ taskId: updated.id, userId })));
       }
     }
+    const currentAssigneeIds = await getTaskAssigneeIds(updated.id);
+    const notificationTask = await getTaskNotificationContext(updated.id);
+    if (notificationTask && assigneeIdsToSync !== undefined) {
+      const previousIds = new Set(previousAssigneeIds);
+      const newlyAssignedIds = currentAssigneeIds.filter((id) => !previousIds.has(id));
+      if (newlyAssignedIds.length) {
+        await notifyTaskUsers({
+          recipientIds: newlyAssignedIds,
+          actorId: user.id,
+          actorName: user.name ?? user.email ?? "Un usuario",
+          type: "assigned",
+          workspaceId: destinationWorkspaceId ?? previous.workspaceId,
+          task: notificationTask,
+          message: `te asignó la tarea “${updated.title}”.`,
+        });
+      }
+    }
     const [destination] = await db
       .select({ workspaceId: columns.workspaceId, name: columns.name })
       .from(columns)
@@ -336,6 +370,21 @@ export async function PATCH(request: Request) {
     const activity: string[] = [];
     if (previous.columnId !== updated.columnId) {
       activity.push(`cambió el estado a ${destination?.name ?? "otra columna"}`);
+    }
+    if (previous.columnId !== updated.columnId || previous.completed !== updated.completed) {
+      if (notificationTask) {
+        await notifyTaskUsers({
+          recipientIds: [...new Set([...currentAssigneeIds, ...(previous.createdBy ? [previous.createdBy] : [])])],
+          actorId: user.id,
+          actorName: user.name ?? user.email ?? "Un usuario",
+          type: "status_change",
+          workspaceId: destinationWorkspaceId ?? previous.workspaceId,
+          task: notificationTask,
+          message: previous.columnId !== updated.columnId
+            ? `cambió el estado de “${previous.title}” a ${destination?.name ?? "otra columna"}.`
+            : `${updated.completed ? "marcó como completada" : "reabrió"} la tarea “${previous.title}”.`,
+        });
+      }
     }
     if (previous.title !== updated.title) activity.push(`renombró la tarea a “${updated.title}”`);
     if (previous.priority !== updated.priority) {

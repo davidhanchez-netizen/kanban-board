@@ -3,12 +3,13 @@
 import Image from "next/image";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Pusher from "pusher-js";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SettingsModal, type SettingsTab } from "@/app/components/SettingsModal";
 import { WorkspaceFeatureViews } from "@/app/components/WorkspaceFeatureViews";
 import { ActivityEntry } from "@/components/comments/ActivityEntry";
 import { ProjectOverview } from "@/components/projects/ProjectOverview";
 import { TaskSubtasks } from "@/components/projects/TaskSubtasks";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 type Priority = "high" | "medium" | "low";
 type Workspace = {
@@ -455,9 +456,14 @@ function TaskComments({
     let uploadedCount = 0;
     try {
       const commentContent = files.reduce((value, pending) => value.replace(pending.marker, ""), trimmedContent).trim();
+      const mentionedTokens = new Set((commentContent.match(/(?:^|\s)@([^\s@]+)/g) ?? [])
+        .map((token) => token.trim().slice(1).replace(/[.,!?;:)\]]+$/g, "").toLocaleLowerCase()));
+      const mentionedUserIds = mentionUsers
+        .filter((member) => mentionedTokens.has(member.name.replace(/\s+/g, "").toLocaleLowerCase()))
+        .map((member) => member.id);
       const result = await request<{ comment: TaskComment }>("/api/comments", {
         method: "POST",
-        body: JSON.stringify({ taskId, content: commentContent, attachmentsCount: files.length }),
+        body: JSON.stringify({ taskId, content: commentContent, attachmentsCount: files.length, mentions: mentionedUserIds }),
       });
       commentCreated = true;
       setComments((current) => [
@@ -952,6 +958,7 @@ export default function Home() {
   const [muteDueToday, setMuteDueToday] = useState(false);
   const [showRowNumbers, setShowRowNumbers] = useState(false);
   const tasksRef = useRef(tasks);
+  const handledNotificationLink = useRef(false);
   const notificationSettingsRef = useRef({ browserNotifications, projectNotifications, doNotDisturb, muteDueToday });
   const sidebarProfileMenuRef = useRef<HTMLDivElement>(null);
   const headerProfileMenuRef = useRef<HTMLDivElement>(null);
@@ -1004,6 +1011,28 @@ export default function Home() {
       });
     return () => { active = false; };
   }, [status, applyBoardData]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || loading || handledNotificationLink.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const workspaceParam = Number(params.get("workspaceId"));
+    const taskParam = Number(params.get("taskId"));
+    if (!Number.isSafeInteger(workspaceParam) || !Number.isSafeInteger(taskParam)) return;
+    handledNotificationLink.current = true;
+    const task = tasks.find((item) => item.id === taskParam);
+    if (task && workspaces.some((item) => item.id === workspaceParam)) {
+      startTransition(() => {
+        setWorkspaceId(workspaceParam);
+        setView("board");
+        setMineOnly(false);
+        setTaskDialog({ open: true, task });
+      });
+    }
+    params.delete("workspaceId");
+    params.delete("taskId");
+    const query = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+  }, [loading, status, tasks, workspaces]);
 
   useEffect(() => {
     if (status !== "authenticated" || !workspaceId) return;
@@ -1305,6 +1334,26 @@ export default function Home() {
     const result = await mutate<{ success: boolean }>(`/api/tasks?id=${id}`, { method: "DELETE" });
     if (result) setTaskDialog({ open: false, task: null });
     else setTasks(previousTasks);
+  }
+
+  async function openNotificationTask(targetWorkspaceId: number, taskId: number) {
+    setWorkspaceId(targetWorkspaceId);
+    setView("board");
+    setMineOnly(false);
+    const task = tasks.find((item) => item.id === taskId);
+    if (task) {
+      setTaskDialog({ open: true, task });
+      return;
+    }
+    try {
+      const result = await request<{ tasks: Task[] }>("/api/tasks", { cache: "no-store" });
+      setTasks(result.tasks);
+      const targetTask = result.tasks.find((item) => item.id === taskId);
+      if (!targetTask) throw new Error("La tarea asociada a esta notificación ya no está disponible.");
+      setTaskDialog({ open: true, task: targetTask });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo abrir la tarea.");
+    }
   }
 
   async function saveColumn(name: string) {
@@ -1614,6 +1663,7 @@ export default function Home() {
               {workspaceId && <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[10px] font-medium sm:inline-flex ${realtimeStatus === "connected" ? "bg-emerald-50 text-emerald-700" : realtimeStatus === "connecting" ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"}`}>{realtimeStatus === "connected" ? "En tiempo real" : realtimeStatus === "connecting" ? "Conectando…" : "Tiempo real no disponible"}</span>}
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
+              <NotificationBell userId={session.user.id} pusherClient={pusherClient} onOpenTask={(targetWorkspaceId, taskId) => void openNotificationTask(targetWorkspaceId, taskId)} />
               <select aria-label="Navegación" value={view} onChange={(event) => { setView(event.target.value as View); setMineOnly(false); }} className="popover-surface max-w-32 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 sm:hidden">
                 <option value="dashboard">Inicio</option><option value="inbox">Bandeja</option><option value="board">Tablero</option><option value="list">Lista</option><option value="calendar">Calendario</option><option value="agents">Agentes</option><option value="strategy">Estrategia</option><option value="knowledge">Conocimientos</option><option value="people">Personas</option>
               </select>
