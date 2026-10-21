@@ -175,7 +175,7 @@ function Modal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[3px]" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section role="dialog" aria-modal="true" aria-label={title} className={`max-h-[90vh] w-full overflow-y-auto ${wide ? "max-w-xl" : "max-w-md"} animate-[modal-in_.18s_ease-out] rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl`}>
+      <section role="dialog" aria-modal="true" aria-label={title} className={`modal-surface max-h-[90vh] w-full overflow-y-auto ${wide ? "max-w-xl" : "max-w-md"} animate-[modal-in_.18s_ease-out] rounded-2xl border border-slate-200 p-6 shadow-2xl`}>
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
@@ -579,14 +579,14 @@ function TaskComments({
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-2 py-1.5">
             <div ref={toolsMenuRef} className="relative">
               <button type="button" aria-label="Insertar formato o contenido" aria-expanded={toolsOpen} aria-haspopup="menu" onClick={() => setToolsOpen((open) => !open)} className="button-secondary !px-2 !py-1"><Icon name="plus" size={15} /></button>
-              {toolsOpen && <div role="menu" className="absolute bottom-10 left-0 z-50 grid max-h-72 w-56 grid-cols-1 gap-0.5 overflow-y-auto rounded-md border border-slate-200 bg-white p-1.5 shadow-lg dark:border-zinc-700 dark:bg-zinc-800">
+              {toolsOpen && <div role="menu" className="popover-surface absolute bottom-10 left-0 z-50 grid max-h-72 w-56 grid-cols-1 gap-0.5 overflow-y-auto rounded-md border border-slate-200 p-1.5 shadow-lg dark:border-zinc-700">
                 {toolbarItems.map((item) => <button key={item.label} type="button" role="menuitem" onClick={() => insertMarkdown(item.value)} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-zinc-200 dark:hover:bg-zinc-700">{item.label}</button>)}
                 <span className="px-2.5 pt-2 text-[10px] font-semibold uppercase text-slate-400">Mencionar a alguien</span>
                 {mentionUsers.slice(0, 8).map((member) => <button key={member.id} type="button" role="menuitem" onClick={() => insertMarkdown(`@${member.name.replace(/\s+/g, "")} `)} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-zinc-200 dark:hover:bg-zinc-700">@{member.name}</button>)}
                 <button type="button" role="menuitem" onClick={() => { setToolsOpen(false); fileInputRef.current?.click(); }} className="rounded-md px-2.5 py-1.5 text-left text-xs text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-zinc-200 dark:hover:bg-zinc-700">Adjuntar imagen o archivo</button>
               </div>}
             </div>
-            <button type="button" onClick={() => setPreview((value) => !value)} className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-white">{preview ? "Editar Markdown" : "Vista previa"}</button>
+            <button type="button" onClick={() => setPreview((value) => !value)} className="rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-100">{preview ? "Editar Markdown" : "Vista previa"}</button>
           </div>
           {preview ? (
             <div className="min-h-24 p-3"><MarkdownContent content={content || "La vista previa del comentario aparecerá aquí."} /></div>
@@ -635,7 +635,7 @@ function TaskComments({
             event.target.value = "";
           }}
         />
-        {files.length > 0 && <ul className="flex flex-wrap gap-2">{files.map(({ file, marker }, index) => <li key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-[11px] text-slate-600"><span className="max-w-40 truncate">{file.name}</span><button type="button" aria-label={`Quitar ${file.name}`} onClick={() => { setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index)); setContent((current) => current.replace(marker, "").replace(/\n{3,}/g, "\n\n")); }} className="rounded-full p-1 hover:bg-white"><Icon name="close" size={12} /></button></li>)}</ul>}
+        {files.length > 0 && <ul className="flex flex-wrap gap-2">{files.map(({ file, marker }, index) => <li key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-[11px] text-slate-600"><span className="max-w-40 truncate">{file.name}</span><button type="button" aria-label={`Quitar ${file.name}`} onClick={() => { setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index)); setContent((current) => current.replace(marker, "").replace(/\n{3,}/g, "\n\n")); }} className="rounded-full p-1 hover:bg-slate-200"><Icon name="close" size={12} /></button></li>)}</ul>}
         <p className="text-[10px] text-slate-400">Hasta 5 archivos, 2 MB cada uno. Imágenes, PDF, texto y CSV.</p>
         <div className="flex justify-end">
           <button type="submit" disabled={saving || (!content.trim() && files.length === 0)} className="button-primary">
@@ -1492,7 +1492,7 @@ export default function Home() {
 
   return (
     <div className="kanban-app min-h-screen bg-[#f7f8fc] text-slate-800">
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-[252px] flex-col border-r border-slate-200/80 bg-white px-4 py-5 lg:flex">
+      <aside className="sidebar-surface fixed inset-y-0 left-0 z-20 hidden w-[252px] flex-col border-r border-slate-200/80 px-4 py-5 lg:flex">
         <a href="#" className="mb-9 flex items-center gap-3 px-2">
           <Image src="/logo.png" alt="Under Control" width={36} height={36} className="size-9 shrink-0 object-contain" />
           <span><span className="block text-[15px] font-bold tracking-tight text-slate-900">Under Control</span><span className="text-[11px] font-medium text-slate-400">WORKSPACE</span></span>
@@ -1500,7 +1500,7 @@ export default function Home() {
 
         <div className="relative mb-5 px-1" ref={createMenuRef}>
           <button type="button" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen((open) => !open)} className="button-primary w-full justify-center"><Icon name="plus" size={16} />Crear</button>
-          {createMenuOpen && <div className="absolute left-1 right-1 top-12 z-40 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+          {createMenuOpen && <div className="popover-surface absolute left-1 right-1 top-12 z-40 rounded-xl border border-slate-200 p-1.5 shadow-xl">
             <button type="button" disabled={!activeColumns.length} onClick={() => { setCreateMenuOpen(false); setTaskDialog({ open: true, task: null }); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50 disabled:opacity-40"><Icon name="check" size={15} />Crear tarea</button>
             <button type="button" onClick={() => { setCreateMenuOpen(false); setWorkspaceDialogOpen(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50"><Icon name="briefcase" size={15} />Crear espacio de trabajo</button>
             <button type="button" disabled={!workspaceId} onClick={() => { setCreateMenuOpen(false); setColumnDialog({ open: true, column: null }); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50 disabled:opacity-40"><Icon name="plus" size={15} />Crear columna</button>
@@ -1552,11 +1552,11 @@ export default function Home() {
                           event.stopPropagation();
                           setWorkspaceMenuId((current) => current === workspace.id ? null : workspace.id);
                         }}
-                        className={`sidebar-workspace-menu-button flex size-6 shrink-0 items-center justify-center rounded-md transition-opacity hover:bg-white/10 ${menuOpen ? "opacity-100" : "opacity-0 group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100"}`}
+                        className={`sidebar-workspace-menu-button flex size-6 shrink-0 items-center justify-center rounded-md transition-opacity hover:bg-purple-600/10 ${menuOpen ? "border border-purple-500/30 bg-purple-600/20 opacity-100" : "opacity-0 group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100"}`}
                       >
                         <Icon name="more" size={16} />
                       </button>
-                      {menuOpen && <div role="menu" className="absolute right-1 top-11 z-40 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+                      {menuOpen && <div role="menu" className="popover-surface absolute right-1 top-11 z-40 w-48 rounded-lg border border-slate-200 p-1 shadow-xl">
                         <button type="button" role="menuitem" onClick={(event) => {
                           event.stopPropagation();
                           setWorkspaceEdit(workspace);
@@ -1594,7 +1594,7 @@ export default function Home() {
           <button type="button" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)} className="sidebar-profile-button flex w-full items-center gap-2 rounded-lg p-1 text-left">
             <UserAvatar image={session.user.image ?? null} name={displayName} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-800">{displayName}</span><span className="block text-[10px] text-slate-400">{session.user.email}</span></span><Icon name="chevron" size={14} />
           </button>
-          {userMenuOpen && <div className="absolute bottom-14 left-0 z-40 w-60 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+          {userMenuOpen && <div className="popover-surface absolute bottom-14 left-0 z-40 w-60 rounded-xl border border-slate-200 p-2 shadow-xl">
             <div className="border-b border-slate-100 px-2 pb-2"><p className="truncate text-sm font-semibold text-slate-800">{displayName}</p><p className="truncate text-xs text-slate-500">{session.user.email}</p></div>
             <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="mt-1 flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Perfil</button>
             <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Establecer aviso de ausencia</button>
@@ -1614,7 +1614,7 @@ export default function Home() {
               {workspaceId && <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[10px] font-medium sm:inline-flex ${realtimeStatus === "connected" ? "bg-emerald-50 text-emerald-700" : realtimeStatus === "connecting" ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"}`}>{realtimeStatus === "connected" ? "En tiempo real" : realtimeStatus === "connecting" ? "Conectando…" : "Tiempo real no disponible"}</span>}
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-              <select aria-label="Navegación" value={view} onChange={(event) => { setView(event.target.value as View); setMineOnly(false); }} className="max-w-32 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700 sm:hidden">
+              <select aria-label="Navegación" value={view} onChange={(event) => { setView(event.target.value as View); setMineOnly(false); }} className="popover-surface max-w-32 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 sm:hidden">
                 <option value="dashboard">Inicio</option><option value="inbox">Bandeja</option><option value="board">Tablero</option><option value="list">Lista</option><option value="calendar">Calendario</option><option value="agents">Agentes</option><option value="strategy">Estrategia</option><option value="knowledge">Conocimientos</option><option value="people">Personas</option>
               </select>
               {!featureView && <>
@@ -1622,7 +1622,7 @@ export default function Home() {
               <div className="relative hidden w-[min(34vw,280px)] sm:block"><Icon name="search" size={16} /><input aria-label="Buscar tareas" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar tareas..." className="search-control" /><kbd className="absolute right-3 top-2.5 rounded border border-slate-200 px-1.5 py-0.5 text-[9px] text-slate-400">⌘ K</kbd></div>
               <div className="relative">
                 <button type="button" onClick={() => setFilterOpen(!filterOpen)} className={`button-secondary !px-2.5 sm:!px-3 ${hasFilters ? "border-indigo-200 bg-indigo-50 text-indigo-700" : ""}`}><Icon name="filter" size={16} /><span className="hidden sm:inline">Filtros</span>{hasFilters && <span className="size-1.5 rounded-full bg-indigo-600" />}</button>
-                {filterOpen && <div className="absolute right-0 top-12 z-30 w-60 rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+                {filterOpen && <div className="popover-surface absolute right-0 top-12 z-30 w-60 rounded-xl border border-slate-200 p-4 shadow-xl">
                   <div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold">Filtrar tareas</span><button type="button" onClick={() => { setPriorityFilter("all"); setColumnFilter("all"); }} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">Limpiar</button></div>
                   <Field label="Prioridad"><select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as Priority | "all")} className="form-control"><option value="all">Todas</option><option value="high">Alta</option><option value="medium">Media</option><option value="low">Baja</option></select></Field>
                   <div className="mt-3"><Field label="Estado / columna"><select value={columnFilter} onChange={(event) => setColumnFilter(event.target.value === "all" ? "all" : Number(event.target.value))} className="form-control"><option value="all">Todas las columnas</option>{activeColumns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></Field></div>
@@ -1631,7 +1631,7 @@ export default function Home() {
               </>}
               <div className="relative" ref={headerProfileMenuRef}>
                 <button type="button" aria-label="Abrir menú de usuario" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)} className="rounded-full ring-offset-2 hover:ring-2 hover:ring-indigo-200"><UserAvatar image={session.user.image ?? null} name={displayName} /></button>
-                {userMenuOpen && <div className="absolute right-0 top-12 z-40 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                {userMenuOpen && <div className="popover-surface absolute right-0 top-12 z-40 w-64 rounded-xl border border-slate-200 p-2 shadow-xl">
                   <div className="flex items-center gap-3 border-b border-slate-100 px-2 pb-3"><UserAvatar image={session.user.image ?? null} name={displayName} /><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{displayName}</p><p className="truncate text-xs text-slate-500">{session.user.email}</p></div></div>
                   <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="mt-1 flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Perfil</button>
                   <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Establecer aviso de ausencia</button>
@@ -1642,7 +1642,7 @@ export default function Home() {
               </div>
               <div className="relative" ref={headerCreateMenuRef}>
                 <button type="button" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen((open) => !open)} className="button-primary !px-3"><Icon name="plus" size={17} /><span className="hidden sm:inline">Crear</span><span className="sm:hidden">+</span></button>
-                {createMenuOpen && <div className="absolute right-0 top-12 z-40 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                {createMenuOpen && <div className="popover-surface absolute right-0 top-12 z-40 w-56 rounded-xl border border-slate-200 p-1.5 shadow-xl">
                   <button type="button" disabled={activeColumns.length === 0} onClick={() => { setCreateMenuOpen(false); setTaskDialog({ open: true, task: null }); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50 disabled:opacity-40"><Icon name="check" size={15} />Nueva tarea</button>
                   <button type="button" onClick={() => { setCreateMenuOpen(false); setWorkspaceDialogOpen(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50"><Icon name="briefcase" size={15} />Nuevo espacio</button>
                   <button type="button" disabled={!workspaceId} onClick={() => { setCreateMenuOpen(false); setColumnDialog({ open: true, column: null }); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50 disabled:opacity-40"><Icon name="plus" size={15} />Nueva columna</button>
@@ -1690,16 +1690,16 @@ export default function Home() {
                     return <section key={column.id} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const id = Number(event.dataTransfer.getData("text/task-id")); const task = tasks.find((item) => item.id === id); if (task) void moveTask(task, column.id); }} className="w-[290px] rounded-xl border border-slate-200/80 bg-[#f0f2f8]/75 p-3 sm:w-[310px]">
                       <div className="mb-3 flex items-center gap-2 px-1 py-1">
                         <span className={`size-2 rounded-full ${["bg-indigo-500", "bg-amber-400", "bg-sky-500", "bg-emerald-500"][index % 4]}`} /><h3 className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800">{column.name}</h3><span className="rounded-md bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">{items.length}</span>
-                        <div className="relative"><button type="button" aria-label={`Acciones para ${column.name}`} onClick={() => setColumnMenu(columnMenu === column.id ? null : column.id)} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><Icon name="more" size={17} /></button>{columnMenu === column.id && <div className="absolute right-0 top-8 z-20 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl"><button type="button" onClick={() => { setColumnMenu(null); setColumnDialog({ open: true, column }); }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"><Icon name="edit" size={14} />Editar nombre</button><button type="button" onClick={() => void deleteColumn(column)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"><Icon name="trash" size={14} />Eliminar columna</button></div>}</div>
+                        <div className="relative"><button type="button" aria-label={`Acciones para ${column.name}`} onClick={() => setColumnMenu(columnMenu === column.id ? null : column.id)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Icon name="more" size={17} /></button>{columnMenu === column.id && <div className="popover-surface absolute right-0 top-8 z-20 w-40 rounded-lg border border-slate-200 p-1 shadow-xl"><button type="button" onClick={() => { setColumnMenu(null); setColumnDialog({ open: true, column }); }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"><Icon name="edit" size={14} />Editar nombre</button><button type="button" onClick={() => void deleteColumn(column)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"><Icon name="trash" size={14} />Eliminar columna</button></div>}</div>
                       </div>
                       <div className="space-y-2.5">
                         {items.map((task) => <TaskCard key={task.id} task={task} onClick={() => showTask(task)} onComplete={() => void toggleTaskCompletion(task)} />)}
                         {items.length === 0 && <div className="rounded-lg border border-dashed border-slate-300 bg-white/55 px-3 py-7 text-center text-xs text-slate-400">{search || hasFilters || mineOnly ? "No hay resultados." : "Suelta aquí una tarea o crea una nueva."}</div>}
-                        <button type="button" onClick={() => setTaskDialog({ open: true, task: null })} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-500 transition hover:bg-white hover:text-indigo-700"><Icon name="plus" size={15} />Añadir tarea</button>
+                        <button type="button" onClick={() => setTaskDialog({ open: true, task: null })} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-indigo-700"><Icon name="plus" size={15} />Añadir tarea</button>
                       </div>
                     </section>;
                   })}
-                  <button type="button" onClick={() => setColumnDialog({ open: true, column: null })} className="flex h-11 w-[170px] items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 text-sm font-medium text-slate-500 transition hover:border-indigo-300 hover:bg-white hover:text-indigo-700"><Icon name="plus" size={16} />Añadir columna</button>
+                  <button type="button" onClick={() => setColumnDialog({ open: true, column: null })} className="flex h-11 w-[170px] items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 text-sm font-medium text-slate-500 transition hover:border-indigo-300 hover:bg-slate-100 hover:text-indigo-700"><Icon name="plus" size={16} />Añadir columna</button>
                 </div> : <EmptyState title="Tu tablero empieza aquí" body="Crea la primera columna para organizar las tareas de este espacio." onAction={() => setColumnDialog({ open: true, column: null })} action="Añadir primera columna" />}
               </div>
             ) : view === "list" ? (

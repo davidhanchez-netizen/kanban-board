@@ -305,8 +305,8 @@ export function SettingsModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-3 sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="settings-title" className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:flex-row">
-        <aside className="w-full shrink-0 border-b border-slate-200 bg-slate-50 p-4 sm:w-56 sm:border-r sm:border-b-0 sm:p-5">
+      <section role="dialog" aria-modal="true" aria-labelledby="settings-title" className="settings-surface flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl shadow-2xl sm:flex-row">
+        <aside className="settings-sidebar w-full shrink-0 border-b border-slate-200 bg-slate-50 p-4 sm:w-56 sm:border-r sm:border-b-0 sm:p-5">
           <div className="mb-4 flex items-center justify-between sm:mb-8">
             <div className="flex items-center gap-2">
               <Image src="/logo.png" alt="Under Control" width={28} height={28} className="size-7 shrink-0 object-contain" />
@@ -316,7 +316,7 @@ export function SettingsModal({
           </div>
           <nav aria-label="Secciones de ajustes" className="flex gap-1 overflow-x-auto sm:block sm:space-y-1">
             {orderedTabs.map((item) => (
-              <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium transition sm:w-full sm:text-sm ${tab === item.id ? "bg-indigo-100 text-indigo-800" : "text-slate-600 hover:bg-slate-200/70"}`}>
+              <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`settings-nav-item flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium transition sm:w-full sm:text-sm ${tab === item.id ? "settings-nav-item-active" : "text-slate-600 hover:bg-slate-200/70"}`}>
                 <span aria-hidden="true">{item.icon}</span>{item.label}
               </button>
             ))}
@@ -378,7 +378,7 @@ export function SettingsModal({
                       ["light", "Claro", "☀"],
                       ["dark", "Oscuro", "☾"],
                       ["system", "Sincronizar con el sistema", "◐"],
-                    ] as const).map(([value, label, icon]) => <button key={value} type="button" aria-pressed={profile.settings.theme === value} onClick={() => updateSetting("theme", value)} className={`flex items-center gap-3 rounded-xl border p-3 text-left text-sm font-medium transition ${profile.settings.theme === value ? "border-indigo-500 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-100" : "border-slate-200 text-slate-700 hover:border-slate-300"}`}><span className="flex size-8 items-center justify-center rounded-lg bg-white text-base shadow-sm">{icon}</span>{label}</button>)}
+                    ] as const).map(([value, label, icon]) => <button key={value} type="button" aria-pressed={profile.settings.theme === value} onClick={() => updateSetting("theme", value)} className={`flex items-center gap-3 rounded-xl border p-3 text-left text-sm font-medium transition ${profile.settings.theme === value ? "border-indigo-500 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-100" : "border-slate-200 text-slate-700 hover:border-slate-300"}`}><span className="settings-theme-icon flex size-8 items-center justify-center rounded-lg text-base shadow-sm">{icon}</span>{label}</button>)}
                   </div>
                 </div>
                 <div className="sm:col-span-2">

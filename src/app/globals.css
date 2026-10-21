@@ -529,3 +529,130 @@ html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-create-button {
     color: #cbd5e1;
   }
 }
+
+.kanban-app .sidebar-surface {
+  background-color: #fff;
+}
+
+.kanban-app .popover-surface,
+.kanban-app .modal-surface,
+.kanban-app .settings-surface {
+  background-color: #fff;
+}
+
+.kanban-app .settings-nav-item-active {
+  background-color: #eef2ff;
+  color: #4338ca;
+}
+
+.kanban-app .settings-theme-icon {
+  background-color: #f1f5f9;
+}
+
+html[data-theme="dark"] .kanban-app .popover-surface,
+html[data-theme="dark"] .kanban-app .modal-surface,
+html[data-theme="dark"] .kanban-app .settings-surface,
+html[data-palette="cyberpunk"] .kanban-app .popover-surface,
+html[data-palette="cyberpunk"] .kanban-app .modal-surface,
+html[data-palette="cyberpunk"] .kanban-app .settings-surface {
+  background-color: #1b202b;
+}
+
+html[data-theme="dark"] .kanban-app .popover-surface,
+html[data-theme="dark"] .kanban-app .modal-surface,
+html[data-theme="dark"] .kanban-app .settings-surface,
+html[data-palette="cyberpunk"] .kanban-app .popover-surface,
+html[data-palette="cyberpunk"] .kanban-app .modal-surface,
+html[data-palette="cyberpunk"] .kanban-app .settings-surface {
+  color: #e2e8f0;
+  border-color: #454052;
+}
+
+html[data-theme="dark"] .kanban-app .sidebar-surface,
+html[data-palette="cyberpunk"] .kanban-app .sidebar-surface {
+  background-color: #171c26;
+  border-color: #343b49;
+}
+
+html[data-theme="dark"] .kanban-app .popover-surface button:hover,
+html[data-theme="dark"] .kanban-app .popover-surface button:focus-visible,
+html[data-palette="cyberpunk"] .kanban-app .popover-surface button:hover,
+html[data-palette="cyberpunk"] .kanban-app .popover-surface button:focus-visible {
+  background-color: rgb(147 51 234 / 20%);
+  color: #e9d5ff;
+}
+
+html[data-theme="dark"] .kanban-app .settings-sidebar,
+html[data-palette="cyberpunk"] .kanban-app .settings-sidebar {
+  background-color: #171c26;
+  border-color: #343b49;
+}
+
+html[data-theme="dark"] .kanban-app .settings-theme-icon,
+html[data-palette="cyberpunk"] .kanban-app .settings-theme-icon {
+  background-color: #303746;
+}
+
+html[data-theme="dark"] .kanban-app .settings-nav-item-active,
+html[data-palette="cyberpunk"] .kanban-app .settings-nav-item-active {
+  background-color: rgb(147 51 234 / 20%);
+  color: #e9d5ff;
+  border: 1px solid rgb(168 85 247 / 30%);
+}
+
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-item:hover,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-item:hover,
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-create-button:hover,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-create-button:hover,
+html[data-theme="dark"] .kanban-app > aside .sidebar-profile-button:hover,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-profile-button:hover {
+  background-color: rgb(147 51 234 / 14%);
+  color: #e9d5ff;
+}
+
+html[data-theme="dark"] .kanban-app > aside .sidebar-nav-item-active,
+html[data-palette="cyberpunk"] .kanban-app > aside .sidebar-nav-item-active {
+  background-color: rgb(147 51 234 / 20%);
+  border: 1px solid rgb(168 85 247 / 30%);
+  color: #e9d5ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] .kanban-app .popover-surface,
+  html[data-theme="system"] .kanban-app .modal-surface,
+  html[data-theme="system"] .kanban-app .settings-surface {
+    background-color: #1b202b;
+    color: #e2e8f0;
+    border-color: #454052;
+  }
+
+  html[data-theme="system"] .kanban-app .popover-surface button:hover,
+  html[data-theme="system"] .kanban-app .popover-surface button:focus-visible,
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-item:hover,
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-create-button:hover,
+  html[data-theme="system"] .kanban-app > aside .sidebar-profile-button:hover {
+    background-color: rgb(147 51 234 / 14%);
+    color: #e9d5ff;
+  }
+
+  html[data-theme="system"] .kanban-app .settings-sidebar {
+    background-color: #171c26;
+    border-color: #343b49;
+  }
+
+  html[data-theme="system"] .kanban-app .settings-theme-icon {
+    background-color: #303746;
+  }
+
+  html[data-theme="system"] .kanban-app .settings-nav-item-active,
+  html[data-theme="system"] .kanban-app > aside .sidebar-nav-item-active {
+    background-color: rgb(147 51 234 / 20%);
+    border: 1px solid rgb(168 85 247 / 30%);
+    color: #e9d5ff;
+  }
+
+  html[data-theme="system"] .kanban-app .sidebar-surface {
+    background-color: #171c26;
+    border-color: #343b49;
+  }
+}

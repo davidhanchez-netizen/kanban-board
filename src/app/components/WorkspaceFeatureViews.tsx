@@ -11,6 +11,7 @@ type Task = {
   priority: "high" | "medium" | "low";
   columnId: number;
   assigneeId: string | null;
+  assignees: { id: string }[];
   completed: boolean;
   dueDate: string | null;
 };
@@ -392,7 +393,9 @@ export function WorkspaceFeatureViews({
               <h3 className="mb-4 font-semibold text-slate-900">Productividad por colaborador</h3>
               {people.length ? <div className="space-y-3">
                 {people.map((person) => {
-                  const assigned = tasks.filter((task) => task.assigneeId === person.id);
+                  const assigned = tasks.filter((task) =>
+                    task.assigneeId === person.id || task.assignees.some((assignee) => assignee.id === person.id),
+                  );
                   const done = assigned.filter((task) => task.completed).length;
                   return <div key={person.id} className="flex items-center gap-3">
                     <PersonAvatar person={person} />

@@ -13,6 +13,16 @@ type Task = {
 
 type Column = { id: number; name: string };
 
+function ProjectIcon({ icon }: { icon: string }) {
+  if (icon !== "briefcase") return <>{icon}</>;
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="size-5 text-purple-400">
+      <rect x="3" y="7" width="18" height="14" rx="2" />
+      <path d="M8 7V4h8v3M3 12h18m-11 0v2h4v-2" />
+    </svg>
+  );
+}
+
 export function ProjectOverview({
   project,
   tasks,
@@ -41,7 +51,7 @@ export function ProjectOverview({
       <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start gap-4">
           <span className="flex size-12 shrink-0 items-center justify-center rounded-xl text-2xl" style={{ backgroundColor: `${project.color}20` }}>
-            {project.icon}
+            <ProjectIcon icon={project.icon} />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -86,11 +96,13 @@ export function ProjectOverview({
           <h3 className="text-sm font-semibold text-slate-800">Trabajo por etapa</h3>
           <ul className="mt-4 space-y-3">
             {columns.map((column) => {
-              const count = tasks.filter((task) => task.columnId === column.id && !task.completed).length;
-              const maximum = Math.max(1, ...columns.map((item) => tasks.filter((task) => task.columnId === item.id && !task.completed).length));
+              const stageTasks = tasks.filter((task) => task.columnId === column.id);
+              const count = stageTasks.length;
+              const openCount = stageTasks.filter((task) => !task.completed).length;
+              const maximum = Math.max(1, ...columns.map((item) => tasks.filter((task) => task.columnId === item.id).length));
               return (
                 <li key={column.id}>
-                  <div className="mb-1.5 flex justify-between text-xs text-slate-500"><span>{column.name}</span><span>{count}</span></div>
+                  <div className="mb-1.5 flex justify-between text-xs text-slate-500"><span>{column.name} <span className="text-slate-400">({openCount} abiertas)</span></span><span>{count}</span></div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${count / maximum * 100}%`, backgroundColor: project.color }} /></div>
                 </li>
               );
