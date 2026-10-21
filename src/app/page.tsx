@@ -948,7 +948,8 @@ export default function Home() {
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "connected" | "unavailable">("connecting");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("profile");
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [isHeaderProfileOpen, setIsHeaderProfileOpen] = useState(false);
+  const [isSidebarProfileOpen, setIsSidebarProfileOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [navigationLabels, setNavigationLabels] = useState<"icons" | "icons-and-text">("icons-and-text");
   const [navigationOrder, setNavigationOrder] = useState(["work", "agents", "strategy", "knowledge", "people"]);
@@ -1077,10 +1078,8 @@ export default function Home() {
   useEffect(() => {
     function closeMenus(event: MouseEvent) {
       if (!(event.target instanceof Node)) return;
-      if (
-        !sidebarProfileMenuRef.current?.contains(event.target) &&
-        !headerProfileMenuRef.current?.contains(event.target)
-      ) setUserMenuOpen(false);
+      if (!sidebarProfileMenuRef.current?.contains(event.target)) setIsSidebarProfileOpen(false);
+      if (!headerProfileMenuRef.current?.contains(event.target)) setIsHeaderProfileOpen(false);
       if (
         !createMenuRef.current?.contains(event.target) &&
         !headerCreateMenuRef.current?.contains(event.target)
@@ -1640,15 +1639,15 @@ export default function Home() {
           <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/80"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${workspaceTasks.length ? completedCount / workspaceTasks.length * 100 : 0}%` }} /></div>
         </div>
         <div className="relative mt-4 border-t border-slate-100 px-1 pt-4" ref={sidebarProfileMenuRef}>
-          <button type="button" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)} className="sidebar-profile-button flex w-full items-center gap-2 rounded-lg p-1 text-left">
-            <UserAvatar image={session.user.image ?? null} name={displayName} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-800">{displayName}</span><span className="block text-[10px] text-slate-400">{session.user.email}</span></span><Icon name="chevron" size={14} />
+          <button type="button" aria-expanded={isSidebarProfileOpen} onClick={() => { setIsSidebarProfileOpen((open) => !open); setIsHeaderProfileOpen(false); }} className="sidebar-profile-button flex w-full items-center gap-2 rounded-lg p-1 text-left">
+            <UserAvatar image={session.user.image ?? null} name={displayName} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-900 dark:text-slate-100">{displayName}</span><span className="block truncate text-[10px] text-slate-600 dark:text-slate-300">{session.user.email}</span></span><Icon name="chevron" size={14} />
           </button>
-          {userMenuOpen && <div className="popover-surface absolute bottom-14 left-0 z-40 w-60 rounded-xl border border-slate-200 p-2 shadow-xl">
-            <div className="border-b border-slate-100 px-2 pb-2"><p className="truncate text-sm font-semibold text-slate-800">{displayName}</p><p className="truncate text-xs text-slate-500">{session.user.email}</p></div>
-            <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="mt-1 flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Perfil</button>
-            <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Establecer aviso de ausencia</button>
-            <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("appearance"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Ajustes</button>
-            <button type="button" onClick={() => { setUserMenuOpen(false); setWorkspaceDialogOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Nuevo espacio de trabajo</button>
+          {isSidebarProfileOpen && <div className="popover-surface absolute bottom-14 left-0 z-40 w-60 rounded-xl border border-slate-200 p-2 shadow-xl">
+            <div className="border-b border-slate-100 px-2 pb-2"><p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{displayName}</p><p className="truncate text-xs text-slate-600 dark:text-slate-300">{session.user.email}</p></div>
+            <button type="button" onClick={() => { setIsSidebarProfileOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="mt-1 flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800">Perfil</button>
+            <button type="button" onClick={() => { setIsSidebarProfileOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800">Establecer aviso de ausencia</button>
+            <button type="button" onClick={() => { setIsSidebarProfileOpen(false); setSettingsTab("appearance"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800">Ajustes</button>
+            <button type="button" onClick={() => { setIsSidebarProfileOpen(false); setWorkspaceDialogOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800">Nuevo espacio de trabajo</button>
             <button type="button" onClick={() => void signOut({ redirectTo: "/" })} className="mt-1 w-full rounded-md border-t border-slate-100 px-2 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">Cerrar sesión</button>
           </div>}
         </div>
@@ -1680,13 +1679,13 @@ export default function Home() {
               </div>
               </>}
               <div className="relative" ref={headerProfileMenuRef}>
-                <button type="button" aria-label="Abrir menú de usuario" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen((open) => !open)} className="rounded-full ring-offset-2 hover:ring-2 hover:ring-indigo-200"><UserAvatar image={session.user.image ?? null} name={displayName} /></button>
-                {userMenuOpen && <div className="popover-surface absolute right-0 top-12 z-40 w-64 rounded-xl border border-slate-200 p-2 shadow-xl">
-                  <div className="flex items-center gap-3 border-b border-slate-100 px-2 pb-3"><UserAvatar image={session.user.image ?? null} name={displayName} /><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{displayName}</p><p className="truncate text-xs text-slate-500">{session.user.email}</p></div></div>
-                  <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="mt-1 flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Perfil</button>
-                  <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Establecer aviso de ausencia</button>
-                  <button type="button" onClick={() => { setUserMenuOpen(false); setSettingsTab("appearance"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Ajustes</button>
-                  <button type="button" onClick={() => { setUserMenuOpen(false); setWorkspaceDialogOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">Nuevo espacio de trabajo</button>
+                <button type="button" aria-label="Abrir menú de usuario" aria-expanded={isHeaderProfileOpen} onClick={() => { setIsHeaderProfileOpen((open) => !open); setIsSidebarProfileOpen(false); }} className="rounded-full ring-offset-2 hover:ring-2 hover:ring-indigo-200"><UserAvatar image={session.user.image ?? null} name={displayName} /></button>
+                {isHeaderProfileOpen && <div className="popover-surface absolute right-0 top-12 z-40 w-64 rounded-xl border border-slate-200 p-2 shadow-xl">
+                  <div className="flex items-center gap-3 border-b border-slate-100 px-2 pb-3"><UserAvatar image={session.user.image ?? null} name={displayName} /><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{displayName}</p><p className="truncate text-xs text-slate-600 dark:text-slate-300">{session.user.email}</p></div></div>
+                  <button type="button" onClick={() => { setIsHeaderProfileOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="mt-1 flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800">Perfil</button>
+                  <button type="button" onClick={() => { setIsHeaderProfileOpen(false); setSettingsTab("profile"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800">Establecer aviso de ausencia</button>
+                  <button type="button" onClick={() => { setIsHeaderProfileOpen(false); setSettingsTab("appearance"); setSettingsOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800">Ajustes</button>
+                  <button type="button" onClick={() => { setIsHeaderProfileOpen(false); setWorkspaceDialogOpen(true); }} className="flex w-full rounded-md px-2 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800">Nuevo espacio de trabajo</button>
                   <button type="button" onClick={() => void signOut({ redirectTo: "/" })} className="mt-1 w-full rounded-md border-t border-slate-100 px-2 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">Cerrar sesión</button>
                 </div>}
               </div>
