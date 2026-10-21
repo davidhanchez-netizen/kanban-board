@@ -153,14 +153,14 @@ export function NotificationBell({
   }
 
   return (
-    <div className="relative">
+    <div className="relative mr-1 shrink-0">
       <button type="button" aria-label={`Notificaciones, ${unreadCount} sin leer`} aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="relative rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-indigo-700">
+        className="relative flex size-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-indigo-700">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-5">
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" />
         </svg>
-        {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold leading-none text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+        {unreadCount > 0 && <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
       </button>
       {open && <section aria-label="Bandeja de notificaciones" className="popover-surface absolute right-0 top-12 z-50 w-[min(92vw,390px)] overflow-hidden rounded-xl border border-slate-200 shadow-2xl">
         <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
@@ -169,7 +169,7 @@ export function NotificationBell({
         </header>
         <div className="flex gap-1 border-b border-slate-100 px-3 py-2">
           {(["all", "unread"] as const).map((value) => <button key={value} type="button" onClick={() => setFilter(value)}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium ${filter === value ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-100"}`}>
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${filter === value ? "bg-purple-600 text-white" : "text-slate-500 hover:bg-slate-800 hover:text-white"}`}>
             {value === "all" ? "Todas" : "No leídas"}
           </button>)}
           <button type="button" aria-label="Actualizar notificaciones" onClick={() => void refresh()} className="ml-auto rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">Actualizar</button>

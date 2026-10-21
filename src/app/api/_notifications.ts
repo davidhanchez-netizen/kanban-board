@@ -57,10 +57,23 @@ export async function notifyTaskUsers(input: {
     publishUserEvent(notification.userId, "notification:created", { notification }),
   ));
 
-  const appUrl = process.env.APP_URL?.replace(/\/+$/, "");
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL)?.replace(/\/+$/, "");
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
-  if (!appUrl || !apiKey || !from) return;
+  const emailRecipients = recipients.filter((recipient) =>
+    recipient.email &&
+    recipient.settings &&
+    typeof recipient.settings === "object" &&
+    "emailNotifications" in recipient.settings &&
+    recipient.settings.emailNotifications === true,
+  );
+  if (!emailRecipients.length) return;
+  if (!appUrl || !apiKey || !from) {
+    console.error(
+      "Task notification email was not sent. Configure NEXT_PUBLIC_APP_URL (or APP_URL), RESEND_API_KEY, and RESEND_FROM_EMAIL; in Vercel, add them under Settings > Environment Variables.",
+    );
+    return;
+  }
 
   const workspace = await db.select({ name: workspaces.name })
     .from(workspaces).where(eq(workspaces.id, input.workspaceId)).limit(1);
@@ -68,10 +81,8 @@ export async function notifyTaskUsers(input: {
   const safe = (value: string) => value.replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
   })[character] ?? character);
-  await Promise.all(recipients.map(async (recipient) => {
-    const settings = recipient.settings;
-    if (!recipient.email || !settings || typeof settings !== "object" ||
-      !("emailNotifications" in settings) || settings.emailNotifications !== true) return;
+  await Promise.all(emailRecipients.map(async (recipient) => {
+    if (!recipient.email) return;
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",

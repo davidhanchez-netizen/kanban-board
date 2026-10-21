@@ -49,13 +49,15 @@ Las rutas de Auth.js están en `/api/auth/*`. `/api/columns`, `/api/tasks` y `/a
 
 El menú de usuario incluye el perfil y los ajustes persistentes en `user_preferences`, vinculados únicamente al `user_id` de la sesión. Las preferencias de pantalla y apariencia nunca se publican por Pusher; solo se difunden cambios colaborativos del perfil. Los temas incluyen Aura/Índigo, Cyberpunk/Neón, Bosque/Esmeralda, Atardecer/Cálido y Mínimo/Monocromático, con acentos de navegación personales. Las fotos de perfil (máximo 1 MB) y los audios de pronunciación (máximo 3 MB) se guardan en Neon como Data URL. La campana muestra notificaciones individuales de asignaciones, comentarios, menciones y cambios de estado; el Inbox permite filtrar, marcar como leídas y abrir la tarea relacionada. La persistencia funciona aunque Pusher no esté configurado; Pusher habilita la actualización inmediata en el canal privado de cada usuario. Los correos son opcionales: configura `RESEND_API_KEY`, `RESEND_FROM_EMAIL` y `APP_URL` en el servidor para activarlos; cada usuario debe habilitarlos en sus ajustes y no se envían si faltan estas variables. Los agentes activados ejecutan automatizaciones al crearse o actualizarse tareas y también se pueden ejecutar manualmente desde el panel; el asignador distribuye tareas pendientes sin responsable, el resumidor registra métricas del espacio y el detector registra vencimientos próximos. Los artículos de Conocimientos y las metas de Estrategia son compartidos por espacio de trabajo y se sincronizan por Pusher cuando está configurado. Personas muestra los miembros conocidos por la aplicación y sus tareas pendientes en el espacio. Las integraciones externas de Slack/Teams, invitaciones por correo, cierre de otras sesiones y eliminación de cuenta requieren servicios o flujos de seguridad adicionales.
 
-El correo se entrega mediante la API de Resend (sin dependencia adicional); configura estas variables en `.env.local` y en el entorno de despliegue:
+El correo se entrega mediante la API de Resend (sin dependencia adicional). En Vercel, agrega las variables en **Settings > Environment Variables** y habilítalas en los entornos necesarios (Production, Preview y/o Development); después, vuelve a desplegar la aplicación:
 
 ```env
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=
-APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=https://tu-dominio.com
 ```
+
+`NEXT_PUBLIC_APP_URL` se usa en el enlace directo de las notificaciones. Para desarrollo local puede definirse como `http://localhost:3000`. También se admite `APP_URL` como alternativa. La clave de Resend y el remitente deben ser válidos y autorizados por Resend; nunca publiques `RESEND_API_KEY` en el cliente ni en el repositorio. Los correos solo se envían a destinatarios que activaron la opción de correo en sus preferencias. La app abre la tarea desde su ruta actual mediante `/?workspaceId=...&taskId=...`.
 
 ### Actualizaciones en tiempo real
 
